@@ -1,5 +1,8 @@
-Require Import Omega.
+Require Export Omega.
 Set Implicit Arguments.
+
+Global Close Scope nat.
+Global Open Scope Z.
 
 Section ILP.
 
@@ -7,55 +10,52 @@ Section ILP.
 Variable V : Type.
 
 (* linear coefficients of variables *)
-Inductive L : Type
-  := Lv : V -> nat -> L
-    | Lc : nat -> L.
+Definition VC : Type := (Z * V)%type.
+
+(* A linear function is a bunch of variables with coefficients, and a constant *)
+Definition Linear : Type
+ := (list VC * Z)%type.
 
 (* constraints *)
 Inductive C : Type
-  := Le : L -> L -> C.
- (*   | Le : L -> L -> C
-    | Between : L -> L -> L -> C.
-*)
+  := Le : Linear -> Linear -> C.
 
-Variable Objective : list L.
-Variable Constraints : list C.
+(* We don't actually need a strictly less than, since we're operating on nats *)
+(*   | Lt : L -> L -> C *)
 
-Definition Assignment := V -> nat.
 
-Inductive Valid_c (a : Assignment) : C -> Prop
- := Valid_c_vv : forall v1 n1 v2 n2,
-                     a v1 * n1 <= a v2 * n2 ->
-                     Valid_c a (Le (Lv v1 n1) (Lv v2 n2))
-  |  Valid_c_vn : forall v1 n1 n2,
-                     a v1 * n1 <= n2 ->
-                     Valid_c a (Le (Lv v1 n1) (Lc n2))
-  |  Valid_c_nv : forall n1 v2 n2,
-                     n1 <= a v2 * n2 ->
-                     Valid_c a (Le (Lc n1) (Lv v2 n2))
-  |  Valid_c_nn : forall n1 n2,
-                     n1 <= n2 ->
-                     Valid_c a (Le (Lc n1) (Lc n2)).
+(* A variable assignment is a mapping from variable to Z *)
+Definition Assignment := V -> Z.
 
+(* Find a linear function's value, for given assignment  *)
+Fixpoint value_go (os : list VC) (a : Assignment) : Z
+ := match os with
+      | nil => 0
+      | cons (n,v) os' => a v * n + value_go os' a
+      end.
+
+Definition value (l : Linear) (a : Assignment) : Z
+ := match l with
+     | (os, c) => value_go os a + c
+     end.
+
+
+(* An assignment is valid for a list of constraints iff all lhs values are less than or equal to rhs *)
 Inductive Valid_go (a : Assignment) : list C -> Prop
  := Valid_go_nil : Valid_go a nil
-   | Valid_go_ceq :
-      forall c cs, Valid_c a c -> Valid_go a cs -> Valid_go a (c::cs).
+   | Valid_go_cons :
+      forall l1 l2 cs, value l1 a <= value l2 a -> Valid_go a cs -> Valid_go a (Le l1 l2 ::cs).
+
+
+Variable Objective : Linear.
+Variable Constraints : list C.
 
 Definition Valid (a : Assignment) : Prop
  := Valid_go a Constraints.
 
 Hypothesis Sat : Assignment.
 
-Fixpoint obj_go (os : list L) (a : Assignment) : nat 
- := match os with
-      | nil => 0
-      | cons (Lv v n) os' => a v * n + obj_go os' a
-      | cons (Lc n) os' => n + obj_go os' a
-      end.
-
-Definition obj (a : Assignment) : nat
- := obj_go Objective a.
+Definition obj := value Objective.
 
 Inductive Minimal
  := MinimalC : forall a, Valid a -> (forall b, Valid b -> obj a <= obj b)

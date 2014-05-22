@@ -1,21 +1,25 @@
 Require Import Clustering.ILP.
 
 Require Import Coq.Lists.List.
+Import ListNotations.
 Set Implicit Arguments.
 
 Inductive V
   := V_x 
    | V_y.
 
-Definition Objective : list (L V) := Lv V_x 1 :: Lv V_y 2 :: nil.
+Definition Objective : Linear V := var 1 V_x |+| var 2 V_y.
 
-Definition Constraints : list (C V) := Le (Lv V_x 1) (Lv V_y 1) :: Le (Lv V_y 1) (Lv V_x 1) :: Le (Lc _ 1) (Lv V_x 1) :: nil.
+Definition Constraints : list (C V) :=
+  constrs
+  [ var1 V_x |==| var1 V_y
+  ; const _ 1 |<=| var1 V_y ].
 
 Definition Sat := fun x => match x with | V_x => 5 | V_y => 5 end.
 
 Lemma Sat_Valid: Valid Constraints Sat.
 Proof.
- repeat constructor.
+ repeat (constructor); simpl; omega.
 Qed.
 
 
@@ -23,9 +27,11 @@ Lemma x_eq_y : forall a, Valid Constraints a -> a V_x = a V_y.
 Proof.
  intros.
  inversion H.
- inversion H2.
- inversion H3.
- inversion H11.
+ inversion H4.
+ inversion H9.
+
+ simpl in *.
+
  omega.
 Qed.
 
@@ -34,11 +40,11 @@ Lemma y_gt_1 : forall a, Valid Constraints a -> a V_y >= 1.
 Proof.
  intros.
  inversion H.
- inversion H2.
- inversion H3.
- inversion H11.
- inversion H12.
- inversion H20.
+ inversion H4.
+ inversion H9.
+
+ simpl in *.
+
  omega.
 Qed.
 
@@ -64,7 +70,7 @@ Proof.
    remember ((fun x => match x with | V_x => 1 | V_y => 1 end) : Assignment V) as b.
    assert (Valid Constraints b) as ValB.
       subst.
-     repeat constructor.
+     repeat constructor; simpl; omega.
 
    apply l in ValB.
     subst.
