@@ -14,3 +14,18 @@ Fixpoint selfcross {V} (xs : list V) : list (V * V)
     | []       => []
     | (x::xs') => selfcross_go x xs'
     end.
+
+
+Lemma In_or_not: forall A (a : A) xs
+     (Heqdec : forall (a b : A), a = b \/ a <> b),
+      In a xs \/ ~ In a xs.
+Proof.
+ intros.
+ induction xs; eauto.
+  destruct (Heqdec a a0).
+   - left. constructor. auto.
+   - destruct IHxs.
+      left. apply in_cons. assumption.
+      right. unfold not. intros.
+             inversion H1; eauto.
+Qed.

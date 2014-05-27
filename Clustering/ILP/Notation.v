@@ -7,6 +7,9 @@ Set Implicit Arguments.
 Notation "x |+| y" := (plus x y)
  (at level 50, left associativity).
 
+Notation "x |-| y" := (plus x (negate y))
+ (at level 50, left associativity).
+
 Notation "x |* y" := (mul x y)
  (at level 40).
 
