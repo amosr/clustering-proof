@@ -7,8 +7,8 @@ THREADS		= 16
 
 
 # -- Roots ----------------------------------------------------------
-root \
- =	Clustering/Simple/Simple.vo \
+#  I have no idea why this works, but $(src_coq_vo) doesn't.
+root = $(patsubst %.v,%.vo,$(shell find Clustering -iname "*.v"))
 
 # -------------------------------------------------------------------
 .PHONY : all
@@ -20,6 +20,7 @@ all:
 # Build the Coq proofs.
 .PHONY: proof
 proof: $(root)
+
 
 # Start the Coq ide
 .PHONY: start
