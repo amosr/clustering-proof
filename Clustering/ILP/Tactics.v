@@ -1,4 +1,5 @@
 Require Import Clustering.ILP.Base.
+Require Import Clustering.Tactics.
 
 
 Ltac validate
@@ -18,6 +19,6 @@ Ltac crunch_valid H
   => inversion H; clear H
   | [ H : Valid_go _ _ |- _]
   => inversion H; clear H
-  end); subst.
+  end); subst; Z_simp_all.
 
 
