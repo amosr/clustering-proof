@@ -4,6 +4,7 @@
 
 Require Import Clustering.ILP.
 Require Import Clustering.List.List.
+Require Import Clustering.Tactics.
 
 Require Import Coq.Lists.List.
 Import ListNotations.
@@ -225,8 +226,63 @@ Section Untyped.
                crunch_valid HVij; omega.
 
     - apply IHl; assumption.
-Qed.
+ Qed.
 
+
+ Lemma V__Sc_refl (a : Assignment Var) Vs i j :
+   Valid (Constraints Vs) a ->
+   In (i,j) (Pairs Vs)      ->
+   a (SameCluster (i,j)) = a (SameCluster (j,i)).
+ Proof.
+  intros HVal HIn.
+   unfold Constraints in *.
+
+   induction (Pairs Vs).
+    inversion HIn.
+   simpl in *.
+
+   apply Valid_app_and in HVal.
+   destruct HVal as [HVij HVrest].
+
+   destruct HIn.
+    - subst.
+      clear IHl HVrest beqV beqV__V_eq_dec l.
+      unfold ConstraintOfPair in HVij.
+      destruct (E (i,j)) as [e|]; try destruct e;
+               crunch_valid HVij; omega.
+
+    - apply IHl; assumption.
+ Qed.
+
+(*
+ Lemma V__Sc_trans (a : Assignment Var) Vs i j k:
+   Valid (Constraints Vs) a ->
+   In (i,k) (Pairs Vs)      ->
+   a (SameCluster (i,j)) = 0 /\ a (SameCluster (j,k)) = 0 ->
+   a (SameCluster (i,k)) = 0.
+ Proof.
+  intros HVal HInIK HSame.
+   unfold Constraints in *.
+
+  assert (a (SameCluster (i,k)) = 0 \/a (SameCluster (i,k)) = 1) as HBool.
+   eapply V__Sc_Bool; eassumption.
+
+   induction (Pairs Vs).
+    inversion HInIK.
+   simpl in *.
+
+   apply Valid_app_and in HVal.
+   destruct HVal  as [HVij HVrest].
+   destruct HSame as [HSameIJ HSameJK].
+
+   destruct HInIK.
+   subst.
+   unfold ConstraintOfPair in HVij.
+      destruct (E (i,k)) as [e|]; try destruct e;
+       crunch_valid HVij.
+   destruct HBool.
+    assumption.
+   *)
 
 (*
 
