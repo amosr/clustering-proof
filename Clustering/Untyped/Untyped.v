@@ -4,6 +4,7 @@
 
 Require Import Clustering.ILP.
 Require Import Clustering.List.List.
+Require Import Clustering.List.Index.
 Require Import Clustering.Tactics.
 
 Require Import Coq.Lists.List.
@@ -19,7 +20,7 @@ Section Untyped.
  (* Equality must be decidable *)
  Hypothesis V_eq_dec
   : forall (a b : V),
-    a = b \/ a <> b.
+    {a = b} + {a <> b}.
 
  (* Edges may be fusible or non *)
  Inductive EdgeType : Type
@@ -29,42 +30,110 @@ Section Untyped.
  (* Is there an edge between two? If so, what kind *)
  Variable E : (V * V) -> option EdgeType.
 
-
-  Hypothesis beqV
-  : V -> V -> bool.
-
-  Hypothesis beqV__V_eq_dec
-  : forall (a b : V),
-    beqV a b = true <-> a = b.
-
-
  Section TopSort.
- (* There must exist a topological ordering *)
- Variable Vs : list V.
+  (* There must exist a topological ordering *)
+  Variable Vs : list V.
  
- Inductive TopSort : list V -> Prop
-  := TS_Nil  : TopSort nil
-   | TS_Cons : forall x xs,
-               Forall (fun y => E (x, y) = None) xs ->
+  Inductive TopSort : list V -> Prop
+   := TS_Nil  : TopSort nil
+    | TS_Cons : forall x xs,
+               Forall (fun y => E (y, x) = None) (x::xs) ->
+               TopSort xs ->
                TopSort (x::xs).
 
- Hypothesis VsTS : TopSort Vs.
+  Hypothesis VsTS : TopSort Vs.
+  Hypothesis All_Vs: forall v, In v Vs.
 
- (* We now have a graph that we can cluster. *)
+  Lemma Edge__TS_index_gt: forall i j et ixI ixJ,
+        E (i,j) = Some et ->
+        In i Vs -> In j Vs ->
+        index_of V_eq_dec i Vs = Some ixI ->
+        index_of V_eq_dec j Vs = Some ixJ ->
+        (ixI < ixJ)%nat.
+  Proof.
+   intros.
+   clear All_Vs.
+   gen ixI ixJ.
+   induction Vs; intros.
+   inversion H0.
+   inverts VsTS.
+   simpl in *.
+   destruct (V_eq_dec i a).
+    subst.
+    inverts H2.
+    destruct (V_eq_dec j a).
+    assert (Some et = None).
+      inverts H6. subst. rewrite <- H5. rewrite <- H. auto.
+     inverts H2.
+
+    inverts H1. destruct~ n.
+    apply (In__index_of V_eq_dec) in H2.
+    destruct H2.
+    rewrite H1 in H3.
+    inverts H3. omega.
+
+ destruct H0; destruct H1; subst.
+ destruct~ n.
+ destruct~ n.
+
+ assert (E (i,j) = None) as HENone.
+ inverts H6.
+ eapply Forall_forall in H8; eassumption.
+ 
+ rewrite HENone in H.
+ inverts H.
+
+ remember H0 as HInI.
+ remember H1 as HInJ.
+ clear HeqHInI. clear HeqHInJ.
+ apply (In__index_of V_eq_dec) in H0.
+ destruct H0.
+ apply (In__index_of V_eq_dec) in H1.
+ destruct H1.
+
+ rewrite H0 in H2.
+ rewrite H1 in H3.
+ destruct (V_eq_dec j a).
+
+ subst.
+ assert (E (i,a) = None) as HENone.
+  inverts H6.
+  eapply Forall_forall in H9;
+  eassumption.
+ rewrite HENone in H.
+ inverts H.
+ 
+ inverts H2.
+ inverts H3.
+
+ assert (x < x0)%nat.
+ eapply IHl; try eassumption.
+ omega.
+ Qed.
+
+  (* We now have a graph that we can cluster. *)
 
 
- (* The type of ILP variables *)
- Inductive Var : Type
-  := SameCluster : (V * V) -> Var
-   | Pi          :      V  -> Var.
+  (* The type of ILP variables *)
+  Inductive Var : Type
+   := SameCluster : (V * V) -> Var
+    | Pi          :      V  -> Var.
 
- Definition Pairs : list (V * V)
-  := selfcross Vs.
+  Definition Pairs : list (V * V)
+   := selfcross Vs.
+
+  Lemma All_Pairs: forall i j,
+      i <> j ->
+      In (i,j) Pairs \/ In (j,i) Pairs.
+  Proof.
+   unfold Pairs. intros.
+   apply selfcross__In; try assumption; apply All_Vs.
+  Qed.
 
  (* N is the number of nodes *)
 
- Definition N : Z
-  := Z_of_nat' (length Vs).
+  Definition N : Z
+   := Z_of_nat (length Vs).
 
 
  (* The objective function is simply to minimise all clusters with equal weight *)
@@ -109,97 +178,102 @@ Section Untyped.
  Definition Constraints : list (C Var)
   := constrs (map ConstraintOfPair Pairs).
 
-
-
- Definition insert_same (vv : V * V) (mapz : list (list V)) : list (list V) :=
-  match vv with
-  | (x,y) => (fix go zs acc : list (list V) :=
-              match zs with
-              | [] => [acc]
-              | (z::zs') =>
-                      match (Contains (beqV x) z, Contains (beqV y) z) with
-                      | (true , true ) =>      go zs' (acc ++ z)
-                      | (false, true ) =>      go zs' (acc ++ z)
-                      | (true , false) =>      go zs' (acc ++ z)
-                      | (false, false) => z :: go zs'  acc
-                      end
-              end) mapz [x;y]
+ (* There exists at least one valid clustering *)
+ (* (and it's no fusion at all) *)
+ Definition Sat := fun x =>
+  match x with
+  (* a pair of nodes not in same cluster *)
+  | SameCluster p
+  => 1
+  (* pi is index in topological sort *)
+  | Pi i
+  => match index_of V_eq_dec i Vs with
+     | Some n => Z_of_nat n
+     | None   => 0
+     end
   end.
 
- Definition insert_diff (v : V) (mapz : list (list V)) : list (list V) :=
-  (fix go zs : list (list V) :=
-              match zs with
-              | [] => [[v]]
-              | (z::zs') =>
-                      match (Contains (beqV v) z) with
-                      | true  =>      z :: zs'
-                      | false =>      z :: go zs'
-                      end
-              end) mapz.
+ Lemma Sat_Valid: Valid Constraints Sat.
+ Proof.
+  unfold Constraints.
+  induction Pairs;
+  validate; simpl.
+  apply Valid_app_and.
+  split~.
+  unfold ConstraintOfPair.
+  remember (E a) as Edge.
+  destruct a as [i j].
+
+   assert (exists ixi, index_of V_eq_dec i Vs = Some ixi) as IndexI.
+    apply In__index_of.
+    apply All_Vs.
+   assert (exists ixj, index_of V_eq_dec j Vs = Some ixj) as IndexJ.
+    apply In__index_of.
+    apply All_Vs.
+   destruct IndexI as [ixi Hixi]; destruct IndexJ as [ixj Hixj].
+
+   assert (ixi < length Vs)%nat.
+    eapply index_of__lt_length. eassumption.
+   assert (ixj < length Vs)%nat.
+    eapply index_of__lt_length. eassumption.
 
 
- Definition Clustering (a : Assignment Var) : list (list V)
-  := let munge mapz vv :=
-          match a (SameCluster vv) with
-          | 0 => insert_same   vv mapz
-          | _ => match vv with
-                 | (x,y) => insert_diff x
-                          ( insert_diff y mapz )
-                 end
-          end
-     in  fold_left munge Pairs [].
+ assert (Z_of_nat ixi < N).
+  unfold N. omega.
+ assert (Z_of_nat ixj < N).
+  unfold N. omega.
+ assert (Z_of_nat ixi >= 0).
+  omega.
+ assert (Z_of_nat ixj >= 0).
+  omega.
+
+  destruct Edge as [e|]; try destruct e;
+    validate; Z_simp_all; try omega;
+    try rewrite Hixi;
+    try rewrite Hixj;
+  try assert (ixi < ixj)%nat by (eapply Edge__TS_index_gt; eauto);
+  try omega.
+
+ unfold N in *.
+ destruct (Z.of_nat (length Vs)); omega.
+
+ unfold N in *.
+ destruct (Z.of_nat (length Vs)).
+ omega.
+ simpl.
+ assert (Z.neg p = - Z.pos p).
+  simpl. reflexivity.
+ rewrite H5. omega.
+
+ assert (Z.neg p = - Z.pos p).
+  auto.
+ simpl.
+ rewrite H5 in *.
+ omega.
+
+ unfold N in *.
+ destruct (Z.of_nat (length Vs));
+ omega.
+ Qed.
+
+ Definition Min := MinimalExists Objective Sat_Valid.
 
  End TopSort.
 
-(*
-
- Inductive Clustering (a : Assignment Var) : list V -> Prop
-  := Cl_Nil  : Clustering a []
-   | Cl_Cons bs vs : Clustering a vs
-     -> (Forall (fun v => a (SameCluster v) = 0) (selfcross bs))
-     -> (Forall (fun v => a (SameCluster v) = 1) (cross bs vs))
-     -> (Forall (fun b => ~ In b vs) bs)
-     -> Clustering a (bs++vs).
 
 
- Lemma Clustering_insert (a : Assignment Var) xs ins
-    : Valid Constraints a
-   -> Clustering a xs
-   -> exists pre post,
-   Clustering a (pre ++ [ins] ++ post) /\ pre ++ post = xs.
- Proof.
-  intros.
-  induction H0.
-   exists []. exists [].
-    split; repeat constructor; eauto.
-
-  destruct IHClustering.
-  destruct H4.
-  destruct H4.
-
-  induction Vs.
-   exists [].
-    repeat split; eauto; constructor.
-
- Lemma valid_assignment_is_Clustering (a : Assignment Var)
-    : Valid Constraints a
-   -> exists verts,
-   Clustering a verts /\ (forall x, In x verts <-> In x Vs) /\ length verts = length Vs.
- Proof.
-  intros.
-  induction Vs.
-   exists [].
-    repeat split; eauto; constructor.
- destruct Vs; subst; eauto; inversion HeqLen.
-    split. constructor. split. split; eauto. eauto.
-
-   
-   
-  intros.
-  destruct H.
- Admitted.
-
-*)
+ Ltac crunch_valid_edge :=
+  match goal with
+   | [ H : Valid (ConstraintOfPair _ ?a) _ |- _]
+   => unfold ConstraintOfPair in H;
+      let i := fresh "i" in
+      let j := fresh "j" in
+      let e := fresh "e" in
+      destruct a as [i j];
+      destruct (E (i,j)) as [e|];
+      try destruct e;
+      crunch_valid H
+  end.
 
 
  Lemma V__Sc_Bool (a : Assignment Var) Vs ij :
@@ -219,11 +293,7 @@ Section Untyped.
 
    destruct HIn.
     - subst.
-      clear IHl HVrest beqV beqV__V_eq_dec l.
-      unfold ConstraintOfPair in HVij.
-      destruct ij as [i j].
-      destruct (E (i,j)) as [e|]; try destruct e;
-               crunch_valid HVij; omega.
+      crunch_valid_edge; omega.
 
     - apply IHl; assumption.
  Qed.
@@ -246,13 +316,41 @@ Section Untyped.
 
    destruct HIn.
     - subst.
-      clear IHl HVrest beqV beqV__V_eq_dec l.
-      unfold ConstraintOfPair in HVij.
-      destruct (E (i,j)) as [e|]; try destruct e;
-               crunch_valid HVij; omega.
+      crunch_valid_edge; omega.
 
     - apply IHl; assumption.
  Qed.
+
+
+ Lemma V_Sc__Pi (a : Assignment Var) Vs i j :
+   Valid (Constraints Vs) a ->
+   In (i,j) (Pairs Vs)      ->
+   a (SameCluster (i,j)) = 0 ->
+   a (Pi i) = a (Pi j).
+ Proof.
+  intros HVal HIn HSame.
+  unfold Constraints in *.
+
+  induction (Pairs Vs).
+   inversion HIn.
+
+  simpl in *.
+  apply Valid_app_and in HVal.
+  destruct HVal as [HVij HVrest].
+  destruct HIn; try (apply IHl; assumption).
+  subst.
+  crunch_valid_edge; rewrite HSame in *; omega.
+ Qed.
+
+(*
+ Lemma V_Pi_Min__Sc (a : Assignment Var) Vs i j :
+   Valid (Constraints Vs) a ->
+   In (i,j) (Pairs Vs)      ->
+   a (Pi i) = a (Pi j)      ->
+   a = assignmentOfMinimal Min ->
+   a (SameCluster (i,j)) = 0.
+ Proof.
+*)
 
 (*
  Lemma V__Sc_trans (a : Assignment Var) Vs i j k:
@@ -283,77 +381,4 @@ Section Untyped.
    destruct HBool.
     assumption.
    *)
-
-(*
-
- Lemma Clustering_SC : forall Vs a,
-       Valid (Constraints Vs) a ->
-       forall cs,
-       In cs (Clustering Vs a) ->
-       forall c d,
-       In c cs /\ In d cs <->
-       a (SameCluster (c, d)) = 0.
- Proof.
-  intros Vs.
-   induction Vs as [| v vs]; intros.
-   simpl in *. inversion H0.
-
-   remember (Constraints Vs) as Cons.
-   induction H.
-   
-  intros.
-   destruct Vs.
-   simpl in *.
-   destruct H.
-   destruct Vs.
-   simpl in *.
-   destruct H.
-
-   simpl in *.
-
-    unfold Constraints in *.
-    unfold Pairs in *.
-    simpl in *.
-     destruct (E (v, v0)); try destruct e; inversion HeqCons.
-
-  intros.
-   
-
-   unfold Constraints.
-   admit.
-
-   simpl in *.
-   inversion H0.
-
-   inversion H.
-   unfold Constraints in H2.
-   unfold Pairs in H2.
-   simpl in H2.
-   inversion H2.
-   eauto.
-   unfold Constraints in *.
-   inversion H.
-
- Lemma Clustering_SC : forall (a : Assignment Var) i j,
-       Valid Constraints a ->
-       forall c,
-       In c (Clustering a) ->
-       In a c /\ In a c <->
-       a (SameCluster (i, j)) = 0.
- Admitted.
-
- Lemma Clustering_Pi : forall (a : Assignment Var) i j,
-       Valid Constraints a ->
-       a (Pi i) > a (Pi j) ->
-       Clustering a i > Clustering a j.
- Admitted.
-
-
- Definition Sat : Assignment Var.
- Admitted.
-
- Lemma valid : Valid Constraints Sat.
- Admitted.
-*)
-
 End Untyped.

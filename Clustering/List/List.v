@@ -1,3 +1,4 @@
+Require Import Clustering.Tactics.
 Require Import Coq.Lists.List.
 Import ListNotations.
 Set Implicit Arguments.
@@ -81,4 +82,46 @@ Proof.
    intros. destruct H1.
    symmetry in H1. contradiction.
    eauto.
+Qed.
+
+
+Lemma selfcross_go__In: forall {A} (xs : list A) i j,
+    In j xs ->
+    In (i,j) (selfcross_go i xs).
+Proof.
+ induction xs; intros.
+  inverts H.
+ simpl in *.
+ destruct~ H.
+  left. subst~.
+Qed.
+
+
+Lemma selfcross__In: forall {A} (xs : list A) i j,
+    i <> j  ->
+    In i xs ->
+    In j xs ->
+    In (i,j) (selfcross xs) \/ In (j,i) (selfcross xs).
+Proof.
+ induction xs; intros.
+  inverts H0.
+ simpl in *.
+ destruct~ H0; destruct~ H1; subst.
+  contradiction.
+
+ left.
+  apply in_or_app.
+  left.
+  apply selfcross_go__In.
+  assumption.
+
+ right.
+  apply in_or_app.
+  left.
+  apply selfcross_go__In.
+  assumption.
+
+ destruct (IHxs i j); try assumption.
+  left. apply in_or_app. right. assumption.
+  right. apply in_or_app. right. assumption.
 Qed.

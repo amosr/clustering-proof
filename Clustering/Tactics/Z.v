@@ -1,8 +1,8 @@
 Require Export Omega.
 Set Implicit Arguments.
 
-Global Close Scope nat.
-Global Open Scope Z.
+Local Close Scope nat.
+Local Open Scope Z.
 
 
 Lemma Z_mul_neg1_r a:
