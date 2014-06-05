@@ -125,3 +125,61 @@ Proof.
   left. apply in_or_app. right. assumption.
   right. apply in_or_app. right. assumption.
 Qed.
+
+
+
+  Lemma selfcross_go_Once: forall {V} i j (l : list V),
+    ~In i l -> In j l ->
+    In (i,j) (selfcross_go i l).
+  Proof.
+   intros.
+   induction l; eauto.
+   simpl.
+   inverts H0.
+    left~.
+    right. apply IHl.
+   unfold not in *.
+    intros.
+   apply H. apply in_cons. assumption.
+   assumption.
+  Qed.
+
+  Lemma selfcross_go_Not: forall {V} a i j (l : list V),
+    a <> i ->
+    ~ In (i,j) (selfcross_go a l).
+  Proof.
+   intros.
+   unfold not. intros.
+   induction l; eauto.
+   simpl in *.
+   apply IHl.
+   inverts H0. inverts H1. destruct H. reflexivity.
+   assumption.
+  Qed.
+
+  Lemma selfcross_Not: forall {V} i j (l : list V),
+    ~In i l ->
+    ~In (i,j) (selfcross l).
+  Proof.
+   intros.
+
+   unfold not in *.
+   intros.
+   apply H.
+
+   induction l; eauto.
+   
+   simpl in *.
+   
+   apply in_app_or in H0.
+   destruct H0.
+   
+   apply selfcross_go_Not in H0. destruct H0.
+   unfold not. intros. apply H. left. assumption.
+
+   right. apply IHl.
+    intros. apply H. right. assumption.
+    assumption.
+  Qed.
+
+

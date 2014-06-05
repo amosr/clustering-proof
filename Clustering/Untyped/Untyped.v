@@ -30,7 +30,6 @@ Section Untyped.
  (* Is there an edge between two? If so, what kind *)
  Variable E : (V * V) -> option EdgeType.
 
- Section TopSort.
   (* There must exist a topological ordering *)
   Variable Vs : list V.
  
@@ -38,6 +37,7 @@ Section Untyped.
    := TS_Nil  : TopSort nil
     | TS_Cons : forall x xs,
                Forall (fun y => E (y, x) = None) (x::xs) ->
+               ~ In x xs ->
                TopSort xs ->
                TopSort (x::xs).
 
@@ -78,7 +78,7 @@ Section Untyped.
 
  assert (E (i,j) = None) as HENone.
  inverts H6.
- eapply Forall_forall in H8; eassumption.
+ eapply Forall_forall in H9; eassumption.
  
  rewrite HENone in H.
  inverts H.
@@ -98,7 +98,7 @@ Section Untyped.
  subst.
  assert (E (i,a) = None) as HENone.
   inverts H6.
-  eapply Forall_forall in H9;
+  eapply Forall_forall in H10;
   eassumption.
  rewrite HENone in H.
  inverts H.
@@ -129,6 +129,30 @@ Section Untyped.
    unfold Pairs. intros.
    apply selfcross__In; try assumption; apply All_Vs.
   Qed.
+
+
+  Lemma Pairs_Only_Once i j pre post l:
+    In i l -> In j l -> i <> j ->
+    TopSort l ->
+    selfcross l = (pre ++ [(i,j)] ++ post) ->
+    ~ In (i,j) post.
+  Proof.
+   intros HInI HInJ HNe HTop HCross.
+   gen pre post.
+   induction l; intros.
+    destruct pre; inverts HCross.
+    
+   inverts HTop.
+   
+   inverts HInI; inverts HInJ; try (destruct HNe; reflexivity).
+   
+   simpl in *.
+   assert (In (i,j) (selfcross_go i l)) by (apply selfcross_go__In; assumption).
+   assert (~In (i,j) (selfcross l)) by (apply selfcross_Not; assumption).
+   (* TODO *)
+  Admitted.
+
+
 
  (* N is the number of nodes *)
 
@@ -258,13 +282,10 @@ Section Untyped.
 
  Definition Min := MinimalExists Objective Sat_Valid.
 
- End TopSort.
-
-
 
  Ltac crunch_valid_edge :=
   match goal with
-   | [ H : Valid (ConstraintOfPair _ ?a) _ |- _]
+   | [ H : Valid (ConstraintOfPair ?a) _ |- _]
    => unfold ConstraintOfPair in H;
       let i := fresh "i" in
       let j := fresh "j" in
@@ -276,62 +297,62 @@ Section Untyped.
   end.
 
 
- Lemma V__Sc_Bool (a : Assignment Var) Vs ij :
-   Valid (Constraints Vs) a ->
-   In ij (Pairs Vs)         ->
-   a (SameCluster ij) = 0 \/ a (SameCluster ij) = 1.
+ Lemma V__Sc_Bool (a : Assignment Var) i j :
+   i <> j ->
+   Valid Constraints a ->
+   a (SameCluster (i,j)) = 0 \/ a (SameCluster (i,j)) = 1.
  Proof.
-  intros HVal HIn.
+  intros HNe HVal.
    unfold Constraints in *.
 
-   induction (Pairs Vs).
-    inversion HIn.
+   apply All_Pairs in HNe.
+   induction Pairs.
+    inversion HNe; inversion H.
    simpl in *.
 
    apply Valid_app_and in HVal.
    destruct HVal as [HVij HVrest].
 
-   destruct HIn.
-    - subst.
-      crunch_valid_edge; omega.
-
-    - apply IHl; assumption.
+   inverts HNe; inverts H;
+     try (apply IHl; try left; assumption);
+     try (apply IHl; try right; assumption);
+     try (crunch_valid_edge; omega).
  Qed.
 
 
- Lemma V__Sc_refl (a : Assignment Var) Vs i j :
-   Valid (Constraints Vs) a ->
-   In (i,j) (Pairs Vs)      ->
+ Lemma V__Sc_refl (a : Assignment Var) i j :
+   i <> j ->
+   Valid Constraints a ->
    a (SameCluster (i,j)) = a (SameCluster (j,i)).
  Proof.
-  intros HVal HIn.
+  intros HNe HVal.
    unfold Constraints in *.
+   apply All_Pairs in HNe.
 
-   induction (Pairs Vs).
-    inversion HIn.
+   induction Pairs.
+    inverts HNe; inverts H.
    simpl in *.
 
    apply Valid_app_and in HVal.
    destruct HVal as [HVij HVrest].
 
-   destruct HIn.
-    - subst.
-      crunch_valid_edge; omega.
-
-    - apply IHl; assumption.
+   inverts HNe; inverts H;
+     try (apply IHl; try left; assumption);
+     try (apply IHl; try right; assumption);
+     try (crunch_valid_edge; omega).
  Qed.
 
 
- Lemma V_Sc__Pi (a : Assignment Var) Vs i j :
-   Valid (Constraints Vs) a ->
-   In (i,j) (Pairs Vs)      ->
+ Lemma V_Sc__Pi (a : Assignment Var) i j :
+   Valid Constraints a ->
+   In (i,j) Pairs      ->
    a (SameCluster (i,j)) = 0 ->
    a (Pi i) = a (Pi j).
  Proof.
   intros HVal HIn HSame.
   unfold Constraints in *.
 
-  induction (Pairs Vs).
+  induction Pairs.
    inversion HIn.
 
   simpl in *.
@@ -342,14 +363,95 @@ Section Untyped.
   crunch_valid_edge; rewrite HSame in *; omega.
  Qed.
 
-(*
- Lemma V_Pi_Min__Sc (a : Assignment Var) Vs i j :
-   Valid (Constraints Vs) a ->
-   In (i,j) (Pairs Vs)      ->
+ Lemma V_Pi_Min__Sc (a : Assignment Var) i j:
+   In (i,j) Pairs ->
+   i <> j ->
+   Valid Constraints a ->
    a (Pi i) = a (Pi j)      ->
    a = assignmentOfMinimal Min ->
    a (SameCluster (i,j)) = 0.
  Proof.
+  intros HIn HEq HVal HPi HMin.
+  destruct Min; simpl in *; subst.
+
+  remember ((fun x =>
+   match x with
+   | SameCluster (a,b)
+   => if   Sumbool.sumbool_and _ _ _ _ (V_eq_dec a i) (V_eq_dec b j)
+      then 0
+      else if   Sumbool.sumbool_and _ _ _ _ (V_eq_dec a j) (V_eq_dec b i)
+      then 0
+      else a0 x
+   | _ => a0 x end) : Assignment Var) as b.
+
+
+  assert (a0 (SameCluster (i,j)) = 0 \/ a0 (SameCluster (i,j)) = 1) as HSc01.
+   eapply V__Sc_Bool; assumption.
+  assert (a0 (SameCluster (i,j)) = a0 (SameCluster (j,i))) as HScRefl.
+   eapply V__Sc_refl; assumption.
+
+  clear All_Vs VsTS v.
+
+  assert (Valid Constraints b) as ValB.
+      subst.
+      unfold Constraints in *.
+      clear l.
+      induction Pairs.
+       simpl. constructor.
+      simpl in *.
+      apply Valid_app_and.
+      apply Valid_app_and in HVal.
+      destruct HIn. subst.
+      split.
+       unfold ConstraintOfPair.
+       remember (E (i,j)) as Edge.
+       destruct Edge; try destruct e; simpl;
+       try (
+      validate; simpl;
+       simpl;
+       try destruct (Sumbool.sumbool_and _ _ _ _ (V_eq_dec i i) (V_eq_dec j j)) as [Hi | Hi];
+       try destruct (Sumbool.sumbool_and _ _ _ _ (V_eq_dec j j) (V_eq_dec i i)) as [Hj | Hj];
+       try destruct (Sumbool.sumbool_and _ _ _ _ _ _) as [Hk | Hk];
+       try destruct Hi as [Hi1 Hi2];
+       try destruct Hi as [Hi | Hi];
+       try (destruct Hi; reflexivity);
+       try (destruct Hj; destruct H; reflexivity);
+       omega).
+      
+      assert (a0 (Pi i) < a0 (Pi j)).
+       destruct HVal.
+       unfold ConstraintOfPair in H.
+       simpl in H.
+       rewrite <- HeqEdge in H.
+       crunch_valid H.
+       omega.
+      omega.
+      
+     assert (~ In (i,j) l).
+      eapply Pairs_Only_Once.
+      skip.
+     
+      
+     simpl.
+
+
+      validate; simpl;
+       simpl;
+       try destruct (Sumbool.sumbool_and _ _ _ _ (V_eq_dec i i) (V_eq_dec j j)) as [Hi | Hi];
+       try destruct (Sumbool.sumbool_and _ _ _ _ (V_eq_dec j j) (V_eq_dec i i)) as [Hj | Hj];
+       try destruct (Sumbool.sumbool_and _ _ _ _ _ _) as [Hk | Hk];
+       try destruct Hi as [Hi1 Hi2];
+       try destruct Hi as [Hi | Hi];
+       try (destruct Hi; reflexivity);
+       try (destruct Hj; destruct H; reflexivity);
+       try omega.
+       
+   destruct HVal.
+   apply IHl.
+   
+   
+Qed.
+  
 *)
 
 (*
