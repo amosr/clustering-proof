@@ -183,3 +183,196 @@ Qed.
   Qed.
 
 
+Inductive Unique {A} : list A -> Prop :=
+ | Unique_nil : Unique []
+ | Unique_cons x xs : ~ In x xs -> Unique xs -> Unique (x::xs).
+
+
+
+Lemma not_In__not_In_selfcross_go {A} (i j k: A) xs:
+  ~ In j xs ->
+  ~ In (i,j) (selfcross_go k xs).
+Proof.
+ unfold not.
+ intros.
+ induction~ xs.
+ simpl in *.
+ destruct H0.
+  inverts H0.
+ apply H; eauto.
+ apply IHxs. intros. apply H. right. assumption.
+ assumption.
+Qed.
+
+Lemma not_In__not_In_selfcross {A} (i j : A) xs:
+  ~ In j xs ->
+  ~ In (i,j) (selfcross xs).
+Proof.
+ unfold not.
+ intros.
+ induction~ xs.
+ simpl in *.
+ apply in_app_or in H0.
+ destruct H0.
+ eapply not_In__not_In_selfcross_go; eauto.
+ apply IHxs; eauto.
+Qed.
+
+Lemma In_selfcross_go__In2 {A} i j k (xs : list A):
+   In (i,j) (selfcross_go k xs) ->
+   In j xs.
+Proof.
+ intros.
+ induction~ xs.
+  destruct H.
+   left. inverts~ H.
+   right. auto.
+Qed.
+
+Lemma In_selfcross__In2 {A} i j (xs : list A):
+   In (i,j) (selfcross xs) ->
+   In j xs.
+Proof.
+ intros.
+ induction~ xs.
+ simpl in H.
+ apply in_app_or in H.
+ destruct H.
+ simpl. right.
+ eapply In_selfcross_go__In2. eassumption.
+ 
+ simpl. right. auto.
+Qed.
+
+
+Lemma In_selfcross_go__fst {A} (i j x : A) xs:
+  In (i,j) (selfcross_go x xs) ->
+  i = x.
+Proof.
+ intros.
+ induction~ xs.
+  inverts H.
+ simpl in *.
+  inverts H.
+ inverts H0. auto.
+ apply IHxs. auto.
+Qed.
+
+Lemma In_selfcross_go__not_In {A} (x : A) x0 xs:
+  ~ In x xs ->
+  In x0 (selfcross_go x xs) ->
+  ~ In x0 (selfcross xs).
+Proof.
+ unfold not. intros.
+ induction~ xs.
+ simpl in *.
+ apply in_app_or in H1.
+
+ destruct x0.
+ assert (a0 = x).
+  destruct H0. inverts H0. auto.
+  eapply In_selfcross_go__fst; eassumption.
+ subst.
+
+ destruct H1.
+  assert (x = a).
+   eapply In_selfcross_go__fst; eassumption.
+  auto.
+
+ apply IHxs; auto.
+ 
+ destruct H0; auto.
+ inverts H0.
+ 
+ apply selfcross_go__In.
+
+ eapply In_selfcross__In2. eassumption.
+Qed.
+
+
+Lemma unique__not_in_selfcross {A} (i : A) j xs rest:
+ Unique xs ->
+ selfcross xs = (i,j) :: rest ->
+ ~ In (i,j) rest.
+Proof.
+ intros.
+ destruct xs. inverts H0.
+ destruct xs. inverts H0.
+ simpl in H0.
+ assert (a = i /\ a0 = j) by inverts~ H0.
+ destruct H1.
+ subst.
+ inverts H.
+ inverts H4.
+ inverts H0.
+
+ unfold not in *.
+ intros.
+ apply in_app_or in H.
+ destruct H.
+
+ apply not_In__not_In_selfcross_go in H; assumption.
+
+ apply in_app_or in H.
+ destruct H.
+
+ assert (i <> j). simpl in H3. auto.
+ apply selfcross_go_Not in H; auto.
+ apply not_In__not_In_selfcross in H; eauto.
+Qed.
+
+
+Lemma unique_selfcross_go {A} i (xs : list A):
+ Unique (i::xs) ->
+ Unique (selfcross_go i xs).
+Proof.
+ intros.
+ induction xs.
+  constructor.
+ simpl in *.
+ inverts H.
+ inverts H3.
+ assert (~ In i xs). simpl in *. auto.
+ constructor.
+  apply not_In__not_In_selfcross_go. assumption.
+ apply IHxs.
+  constructor; assumption.
+Qed.
+
+Lemma unique_app {A} (xs ys : list A):
+ Unique xs -> Unique ys ->
+ Forall (fun x => ~ In x ys) xs ->
+ Unique (xs++ys).
+Proof.
+ induction~ xs; intros.
+ simpl.
+ inverts H.
+ inverts H1.
+ constructor.
+  unfold not in *.
+  intros.
+  apply in_app_or in H.
+  destruct H; auto.
+ auto.
+Qed.
+
+Lemma unique_selfcross {A} (xs : list A):
+ Unique xs ->
+ Unique (selfcross xs).
+Proof.
+ intros.
+ induction H.
+  constructor.
+ simpl.
+ assert (Unique (selfcross_go x xs)).
+  apply unique_selfcross_go.
+   constructor; assumption.
+
+ apply unique_app; try assumption.
+ apply Forall_forall.
+ unfold not in *.
+ intros.
+ 
+ eapply In_selfcross_go__not_In in H; try eassumption.
+ apply H. assumption.
+Qed.

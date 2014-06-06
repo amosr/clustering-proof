@@ -37,12 +37,12 @@ Section Untyped.
    := TS_Nil  : TopSort nil
     | TS_Cons : forall x xs,
                Forall (fun y => E (y, x) = None) (x::xs) ->
-               ~ In x xs ->
                TopSort xs ->
                TopSort (x::xs).
 
   Hypothesis VsTS : TopSort Vs.
   Hypothesis All_Vs: forall v, In v Vs.
+  Hypothesis Vs_Unique : Unique Vs.
 
   Lemma Edge__TS_index_gt: forall i j et ixI ixJ,
         E (i,j) = Some et ->
@@ -52,7 +52,7 @@ Section Untyped.
         (ixI < ixJ)%nat.
   Proof.
    intros.
-   clear All_Vs.
+   clear All_Vs Vs_Unique.
    gen ixI ixJ.
    induction Vs; intros.
    inversion H0.
@@ -78,7 +78,7 @@ Section Untyped.
 
  assert (E (i,j) = None) as HENone.
  inverts H6.
- eapply Forall_forall in H9; eassumption.
+ eapply Forall_forall in H8; eassumption.
  
  rewrite HENone in H.
  inverts H.
@@ -98,7 +98,7 @@ Section Untyped.
  subst.
  assert (E (i,a) = None) as HENone.
   inverts H6.
-  eapply Forall_forall in H10;
+  eapply Forall_forall in H9;
   eassumption.
  rewrite HENone in H.
  inverts H.
@@ -131,26 +131,11 @@ Section Untyped.
   Qed.
 
 
-  Lemma Pairs_Only_Once i j pre post l:
-    In i l -> In j l -> i <> j ->
-    TopSort l ->
-    selfcross l = (pre ++ [(i,j)] ++ post) ->
-    ~ In (i,j) post.
+  Lemma Pairs_Unique:
+   Unique Pairs.
   Proof.
-   intros HInI HInJ HNe HTop HCross.
-   gen pre post.
-   induction l; intros.
-    destruct pre; inverts HCross.
-    
-   inverts HTop.
-   
-   inverts HInI; inverts HInJ; try (destruct HNe; reflexivity).
-   
-   simpl in *.
-   assert (In (i,j) (selfcross_go i l)) by (apply selfcross_go__In; assumption).
-   assert (~In (i,j) (selfcross l)) by (apply selfcross_Not; assumption).
-   (* TODO *)
-  Admitted.
+   apply unique_selfcross. assumption.
+  Qed.
 
 
 
@@ -363,6 +348,32 @@ Section Untyped.
   crunch_valid_edge; rewrite HSame in *; omega.
  Qed.
 
+ Definition update_Sc (a_orig : Assignment Var) i j new_value : Assignment Var :=
+  (fun x =>
+   match x with
+   | SameCluster (a,b)
+   => if   Sumbool.sumbool_and _ _ _ _ (V_eq_dec a i) (V_eq_dec b j)
+      then new_value
+      else if   Sumbool.sumbool_and _ _ _ _ (V_eq_dec a j) (V_eq_dec b i)
+      then new_value
+      else a_orig x
+   | _ => a_orig x end).
+
+ Lemma update_Sc_Valid a i j v ps:
+  Valid (constrs (map ConstraintOfPair ps)) a ->
+  ~ In (i,j) ps -> ~ In (j,i) ps ->
+  Valid (constrs (map ConstraintOfPair ps)) (update_Sc a i j v).
+ Proof.
+ Admitted.
+(* TODO *)
+(*
+   repeat (match goal with
+   | [ |- context [ V_eq_dec ?X ?Y ] ] => destruct (V_eq_dec X Y)
+   end);
+*)
+
+    
+
  Lemma V_Pi_Min__Sc (a : Assignment Var) i j:
    In (i,j) Pairs ->
    i <> j ->
@@ -374,15 +385,7 @@ Section Untyped.
   intros HIn HEq HVal HPi HMin.
   destruct Min; simpl in *; subst.
 
-  remember ((fun x =>
-   match x with
-   | SameCluster (a,b)
-   => if   Sumbool.sumbool_and _ _ _ _ (V_eq_dec a i) (V_eq_dec b j)
-      then 0
-      else if   Sumbool.sumbool_and _ _ _ _ (V_eq_dec a j) (V_eq_dec b i)
-      then 0
-      else a0 x
-   | _ => a0 x end) : Assignment Var) as b.
+  remember (update_Sc a0 i j 0 : Assignment Var) as b.
 
 
   assert (a0 (SameCluster (i,j)) = 0 \/ a0 (SameCluster (i,j)) = 1) as HSc01.
@@ -390,9 +393,11 @@ Section Untyped.
   assert (a0 (SameCluster (i,j)) = a0 (SameCluster (j,i))) as HScRefl.
    eapply V__Sc_refl; assumption.
 
-  clear All_Vs VsTS v.
+  clear All_Vs v.
+  assert (Unique Pairs) as HUnique. apply unique_selfcross. assumption.
 
   assert (Valid Constraints b) as ValB.
+      unfold update_Sc in *.
       subst.
       unfold Constraints in *.
       clear l.
@@ -426,33 +431,16 @@ Section Untyped.
        crunch_valid H.
        omega.
       omega.
-      
-     assert (~ In (i,j) l).
-      eapply Pairs_Only_Once.
-      skip.
-     
-      
-     simpl.
-
-
-      validate; simpl;
-       simpl;
-       try destruct (Sumbool.sumbool_and _ _ _ _ (V_eq_dec i i) (V_eq_dec j j)) as [Hi | Hi];
-       try destruct (Sumbool.sumbool_and _ _ _ _ (V_eq_dec j j) (V_eq_dec i i)) as [Hj | Hj];
-       try destruct (Sumbool.sumbool_and _ _ _ _ _ _) as [Hk | Hk];
-       try destruct Hi as [Hi1 Hi2];
-       try destruct Hi as [Hi | Hi];
-       try (destruct Hi; reflexivity);
-       try (destruct Hj; destruct H; reflexivity);
-       try omega.
-       
-   destruct HVal.
-   apply IHl.
    
+   inverts HUnique.
+apply update_Sc_Valid. destruct HVal; assumption.
+ assumption.
+   (* TODO *)
+   skip.
+   skip. skip.   
    
 Qed.
   
-*)
 
 (*
  Lemma V__Sc_trans (a : Assignment Var) Vs i j k:
