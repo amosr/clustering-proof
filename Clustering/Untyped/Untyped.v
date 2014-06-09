@@ -149,7 +149,7 @@ Section Untyped.
  Definition Objective : Linear Var
   := let clusters
           := map (fun p => var1 (SameCluster p)) Pairs
-     in  fold_left (fun x y => x |+| y) clusters (const _ 0).
+     in  fold_right (fun x y => x |+| y) (const _ 0) clusters.
 
 
  (* Define constraint for pair of nodes *)
@@ -359,20 +359,82 @@ Section Untyped.
       else a_orig x
    | _ => a_orig x end).
 
+ Lemma update_Sc_Valid1 a i j v p:
+  Valid (ConstraintOfPair p) a ->
+  (i,j) <> p -> (j,i) <> p ->
+  i <> j ->
+  Valid (ConstraintOfPair p) (update_Sc a i j v).
+ Proof.
+  intros.
+   unfold ConstraintOfPair.
+   unfold update_Sc.
+   crunch_valid_edge;
+   
+   validate; simpl;
+   repeat (match goal with
+   | [ |- context [ V_eq_dec ?X ?Y ] ] => destruct (V_eq_dec X Y)
+   end); simpl;
+   
+   try solve [subst; contradiction];
+   try solve [destruct H0; subst; auto];
+   try solve [destruct H1; subst; auto];
+   try omega.
+Qed.
+
  Lemma update_Sc_Valid a i j v ps:
   Valid (constrs (map ConstraintOfPair ps)) a ->
   ~ In (i,j) ps -> ~ In (j,i) ps ->
+  i <> j ->
   Valid (constrs (map ConstraintOfPair ps)) (update_Sc a i j v).
  Proof.
- Admitted.
-(* TODO *)
-(*
-   repeat (match goal with
-   | [ |- context [ V_eq_dec ?X ?Y ] ] => destruct (V_eq_dec X Y)
-   end);
-*)
+  intros.
+  induction ps.
+   constructor.
+  simpl in *.
+  apply Valid_app_and.
+  apply Valid_app_and in H.
+  destruct H.
 
-    
+  split.
+   apply update_Sc_Valid1; auto.
+
+  apply IHps; auto.
+Qed.
+
+ Lemma update_Sc_Obj_not_in a i j v:
+   ~ In (i,j) Pairs ->
+   ~ In (j,i) Pairs ->
+   obj Objective (update_Sc a i j v) =
+    obj Objective a.
+ Proof.
+  intros.
+  unfold Objective. unfold obj.
+  induction Pairs; auto.
+  
+  simpl.
+  repeat rewrite value_app_plus.
+  simpl in *.
+  rewrite IHl; auto.
+  simpl.
+  destruct a0.
+
+  repeat (match goal with
+   | [ |- context [ V_eq_dec ?X ?Y ] ] => destruct (V_eq_dec X Y)
+   end); simpl; subst;
+
+   try solve [destruct n; auto];
+   try solve [destruct H; left; auto];
+   try solve [destruct H0; left; auto];
+   omega.
+ Qed.
+
+ Lemma update_Sc_Obj a i j v:
+   In (i,j) Pairs ->
+   obj Objective (update_Sc a i j v) =
+    obj Objective a + v - a (SameCluster (i,j)).
+ Proof.
+ Admitted.
+
 
  Lemma V_Pi_Min__Sc (a : Assignment Var) i j:
    In (i,j) Pairs ->
@@ -395,9 +457,10 @@ Section Untyped.
 
   clear All_Vs v.
   assert (Unique Pairs) as HUnique. apply unique_selfcross. assumption.
+  assert (~ In (j,i) Pairs) as HNotSwap by (
+   apply unique_In__not_swap_In; assumption).
 
   assert (Valid Constraints b) as ValB.
-      unfold update_Sc in *.
       subst.
       unfold Constraints in *.
       clear l.
@@ -408,6 +471,7 @@ Section Untyped.
       apply Valid_app_and in HVal.
       destruct HIn. subst.
       split.
+      unfold update_Sc in *.
        unfold ConstraintOfPair.
        remember (E (i,j)) as Edge.
        destruct Edge; try destruct e; simpl;
@@ -433,12 +497,34 @@ Section Untyped.
       omega.
    
    inverts HUnique.
-apply update_Sc_Valid. destruct HVal; assumption.
- assumption.
-   (* TODO *)
-   skip.
-   skip. skip.   
+   destruct HVal.
+   apply update_Sc_Valid; auto.
    
+   destruct HVal as [HVal1 HVal2].
+   split.
+    assert (a <> (i,j)).
+     inverts HUnique.
+     unfold not. intros.
+     apply H2.
+     subst. assumption.
+    apply update_Sc_Valid1; auto.
+   inverts HUnique.
+   apply IHl; auto.
+
+ assert (b (SameCluster (i,j)) = 0).
+  rewrite Heqb. simpl.
+   destruct (V_eq_dec i i); auto.
+   destruct (V_eq_dec j j); auto.
+   destruct n; auto.
+   destruct n; auto.
+ rewrite <- H.
+
+ assert (obj Objective a0 <= obj Objective b) by auto.
+ assert (obj Objective b = obj Objective a0 + 0 - a0 (SameCluster (i,j))).
+  subst.
+  applys update_Sc_Obj. assumption.
+
+ omega.
 Qed.
   
 

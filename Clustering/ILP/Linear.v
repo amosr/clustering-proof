@@ -31,5 +31,20 @@ Section Linear.
  | (vs1,n1) => (map (fun x => match x with  | (n,v) => (-n, v) end) vs1, -n1)
  end.
 
+
+
+ Lemma value_app_plus a b ass:
+   value (plus a b) ass =
+   value a ass   + value b ass.
+ Proof.
+  destruct a.
+  destruct b.
+  induction l.
+   simpl. omega.
+  destruct a.
+  simpl in *.
+  omega.
+ Qed.
+
 End Linear.
 

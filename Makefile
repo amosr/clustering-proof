@@ -25,7 +25,7 @@ proof: $(root)
 # Start the Coq ide
 .PHONY: start
 start: 
-	coqide -R Clustering -as Clustering &
+	coqide -R Clustering -as Clustering 2>/dev/null &
 
 # Build dependencies for Coq proof scripts.
 .PHONY: deps

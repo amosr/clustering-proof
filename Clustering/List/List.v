@@ -376,3 +376,64 @@ Proof.
  eapply In_selfcross_go__not_In in H; try eassumption.
  apply H. assumption.
 Qed.
+
+
+Lemma In_not_In__not_eq {A} i j (xs : list A):
+   In i xs ->
+ ~ In j xs ->
+ i <> j.
+Proof.
+ intros.
+ induction~ xs.
+ simpl in *.
+ inverts~ H.
+Qed.
+
+Lemma unique_In__not_eq {A} i j (xs : list A):
+ Unique xs ->
+ In (i,j) (selfcross xs) ->
+ i <> j.
+Proof.
+ intros HUnique HIn.
+ induction HUnique; auto.
+ simpl in HIn.
+ apply in_app_or in HIn.
+ destruct HIn.
+ assert (i = x) by (eapply In_selfcross_go__fst; eassumption).
+ subst.
+ assert (In j xs) by (eapply In_selfcross_go__In2; eassumption).
+ assert (j <> x) by (eapply In_not_In__not_eq; eassumption).
+ auto.
+ auto.
+Qed.
+
+Lemma unique_In__not_swap_In {A} i j (xs : list A):
+ Unique xs ->
+ In (i,j) (selfcross xs) ->
+ ~ In (j,i) (selfcross xs).
+Proof.
+ intros.
+ assert (i <> j) by (eapply unique_In__not_eq; eassumption).
+ induction~ H.
+ simpl in *.
+ apply in_app_or in H0.
+ destruct H0.
+ assert (i = x) by (eapply In_selfcross_go__fst; eassumption).
+ subst.
+ unfold not; intros HIn.
+ apply in_app_or in HIn.
+ destruct HIn.
+  assert (j = x) by (eapply In_selfcross_go__fst; eassumption).
+   auto.
+  apply H.
+  eapply In_selfcross__In2; eassumption.
+ unfold not; intros HIn.
+ apply in_app_or in HIn.
+ destruct HIn.
+  assert (j = x) by (eapply In_selfcross_go__fst; eassumption).
+  subst.
+  assert (In x xs) by (eapply In_selfcross__In2; eassumption).
+  auto.
+ apply IHUnique; assumption.
+Qed.
+
