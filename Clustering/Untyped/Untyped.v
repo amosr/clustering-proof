@@ -146,10 +146,13 @@ Section Untyped.
 
 
  (* The objective function is simply to minimise all clusters with equal weight *)
- Definition Objective : Linear Var
+ Definition Objectives (ps : list (V * V)) : Linear Var
   := let clusters
-          := map (fun p => var1 (SameCluster p)) Pairs
+          := map (fun p => var1 (SameCluster p)) ps
      in  fold_right (fun x y => x |+| y) (const _ 0) clusters.
+
+ Definition Objective : Linear Var
+  := Objectives Pairs.
 
 
  (* Define constraint for pair of nodes *)
@@ -401,20 +404,20 @@ Qed.
   apply IHps; auto.
 Qed.
 
- Lemma update_Sc_Obj_not_in a i j v:
-   ~ In (i,j) Pairs ->
-   ~ In (j,i) Pairs ->
-   obj Objective (update_Sc a i j v) =
-    obj Objective a.
+ Lemma update_Sc_Obj_not_in a i j v ps:
+   ~ In (i,j) ps ->
+   ~ In (j,i) ps ->
+   obj (Objectives ps) (update_Sc a i j v) =
+   obj (Objectives ps) a.
  Proof.
   intros.
-  unfold Objective. unfold obj.
-  induction Pairs; auto.
+  unfold Objectives. unfold obj.
+  induction ps; auto.
   
   simpl.
   repeat rewrite value_app_plus.
   simpl in *.
-  rewrite IHl; auto.
+  rewrite IHps; auto.
   simpl.
   destruct a0.
 
@@ -428,12 +431,66 @@ Qed.
    omega.
  Qed.
 
+ Lemma update_Sc_Obj' a i j v ps:
+   Unique ps     ->
+     In (i,j) ps ->
+   ~ In (j,i) ps ->
+   obj (Objectives ps) (update_Sc a i j v) =
+   obj (Objectives ps) a + v - a (SameCluster (i,j)).
+ Proof.
+  intros HUn HIn HNIn.
+  induction HUn.
+   inverts HIn.
+  simpl in *.
+  destruct HIn.
+   subst.
+   assert (obj (Objectives xs) (update_Sc a i j v) = obj (Objectives xs) a)
+    by (apply update_Sc_Obj_not_in; auto).
+   unfold Objectives in *.
+   simpl in *.
+   unfold obj in *.
+   simpl.
+   repeat rewrite value_app_plus in *.
+   rewrite H0.
+   simpl.
+   destruct (V_eq_dec i i); try destruct n; auto.
+   destruct (V_eq_dec j j); try destruct n; auto.
+   simpl.
+   omega.
+
+ unfold Objectives in *.
+ unfold obj in *.
+ simpl in *.
+ repeat rewrite value_app_plus in *.
+ rewrite IHHUn; auto.
+ simpl.
+ destruct x as [k l].
+
+
+  repeat (match goal with
+   | [ |- context [ V_eq_dec ?X ?Y ] ] => destruct (V_eq_dec X Y)
+   end); simpl; substs;
+
+   try solve [destruct n; auto];
+   try solve [destruct H; auto];
+   try solve [destruct H0; auto];
+   try solve [destruct HNIn; auto];
+   try solve [omega].
+ Qed.
+
  Lemma update_Sc_Obj a i j v:
    In (i,j) Pairs ->
    obj Objective (update_Sc a i j v) =
     obj Objective a + v - a (SameCluster (i,j)).
  Proof.
- Admitted.
+  unfold Objective.
+  intros.
+  rewrite update_Sc_Obj'; auto.
+  apply Pairs_Unique.
+
+  unfold Pairs in *.
+  apply unique_In__not_swap_In; auto.
+ Qed.
 
 
  Lemma V_Pi_Min__Sc (a : Assignment Var) i j:
@@ -527,7 +584,6 @@ Qed.
  omega.
 Qed.
   
-
 (*
  Lemma V__Sc_trans (a : Assignment Var) Vs i j k:
    Valid (Constraints Vs) a ->
