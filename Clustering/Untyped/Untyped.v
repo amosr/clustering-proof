@@ -13,7 +13,7 @@ Import ListNotations.
 Set Implicit Arguments.
 
 Section Untyped.
- 
+
  (* Type of nodes *)
  Variable V : Type.
 
@@ -21,6 +21,9 @@ Section Untyped.
  Hypothesis V_eq_dec
   : forall (a b : V),
     {a = b} + {a <> b}.
+
+ Ltac crunch_eq_decs := crunch_destruct V_eq_dec.
+
 
  (* Edges may be fusible or non *)
  Inductive EdgeType : Type
@@ -30,81 +33,68 @@ Section Untyped.
  (* Is there an edge between two? If so, what kind *)
  Variable E : (V * V) -> option EdgeType.
 
-  (* There must exist a topological ordering *)
-  Variable Vs : list V.
- 
-  Inductive TopSort : list V -> Prop
+ (* There must exist a topological ordering *)
+ Variable Vs : list V.
+
+ Inductive TopSort : list V -> Prop
    := TS_Nil  : TopSort nil
     | TS_Cons : forall x xs,
-               Forall (fun y => E (y, x) = None) (x::xs) ->
-               TopSort xs ->
-               TopSort (x::xs).
+                Forall (fun y => E (y, x) = None) (x::xs) ->
+                TopSort xs ->
+                TopSort (x::xs).
 
-  Hypothesis VsTS : TopSort Vs.
-  Hypothesis All_Vs: forall v, In v Vs.
-  Hypothesis Vs_Unique : Unique Vs.
+ Hypothesis VsTS : TopSort Vs.
+ Hypothesis All_Vs: forall v, In v Vs.
+ Hypothesis Vs_Unique : Unique Vs.
 
-  Lemma Edge__TS_index_gt: forall i j et ixI ixJ,
-        E (i,j) = Some et ->
-        In i Vs -> In j Vs ->
-        index_of V_eq_dec i Vs = Some ixI ->
-        index_of V_eq_dec j Vs = Some ixJ ->
-        (ixI < ixJ)%nat.
-  Proof.
-   intros.
-   clear All_Vs Vs_Unique.
-   gen ixI ixJ.
-   induction Vs; intros.
-   inversion H0.
-   inverts VsTS.
-   simpl in *.
-   destruct (V_eq_dec i a).
-    subst.
-    inverts H2.
-    destruct (V_eq_dec j a).
-    assert (Some et = None).
-      inverts H6. subst. rewrite <- H5. rewrite <- H. auto.
-     inverts H2.
+ Lemma Edge__TS_index_gt i j et ixI ixJ:
+       E (i,j) = Some et ->
+       index_of V_eq_dec i Vs = Some ixI ->
+       index_of V_eq_dec j Vs = Some ixJ ->
+       (ixI < ixJ)%nat.
+ Proof.
+  intros HE Hi Hj.
+   assert (In i Vs) by auto.
+   assert (In j Vs) by auto.
+  clear All_Vs Vs_Unique.
+  gen ixI ixJ.
+  induction Vs; intros. inverts Hi. inverts VsTS. simpl in *.
+  destruct (V_eq_dec i a). subst. inverts Hi. destruct (V_eq_dec j a).
+   assert (Some et = None).
+    inverts H3. subst. rewrite <- H5. rewrite <- HE. auto.
+   inverts H1.
+   inverts H0. destruct~ n.
+    apply (In__index_of V_eq_dec) in H1.
+    destruct H1.
+    rewrite H0 in Hj.
+    inverts Hj. omega.
 
-    inverts H1. destruct~ n.
-    apply (In__index_of V_eq_dec) in H2.
-    destruct H2.
-    rewrite H1 in H3.
-    inverts H3. omega.
-
- destruct H0; destruct H1; subst.
- destruct~ n.
- destruct~ n.
+ destruct  H; destruct  H0; subst.
+ destruct~ n. destruct~ n.
 
  assert (E (i,j) = None) as HENone.
- inverts H6.
- eapply Forall_forall in H8; eassumption.
- 
- rewrite HENone in H.
- inverts H.
-
- remember H0 as HInI.
- remember H1 as HInJ.
- clear HeqHInI. clear HeqHInJ.
- apply (In__index_of V_eq_dec) in H0.
- destruct H0.
- apply (In__index_of V_eq_dec) in H1.
- destruct H1.
-
- rewrite H0 in H2.
- rewrite H1 in H3.
- destruct (V_eq_dec j a).
-
- subst.
- assert (E (i,a) = None) as HENone.
-  inverts H6.
-  eapply Forall_forall in H9;
-  eassumption.
- rewrite HENone in H.
- inverts H.
- 
- inverts H2.
  inverts H3.
+ eapply Forall_forall in H5; eassumption.
+
+ rewrite HENone in HE. inverts HE.
+
+ remember H  as HInI.
+ remember H0 as HInJ.
+ clear HeqHInI. clear HeqHInJ.
+ apply (In__index_of V_eq_dec) in H.  destruct H.
+ apply (In__index_of V_eq_dec) in H0. destruct H0.
+
+ rewrite H  in Hi. rewrite H0 in Hj.
+ destruct (V_eq_dec j a). subst.
+ assert (E (i,a) = None) as HENone.
+  inverts H3.
+  eapply Forall_forall in H6;
+  eassumption.
+ rewrite HENone in HE.
+ inverts HE.
+
+ inverts Hi.
+ inverts Hj.
 
  assert (x < x0)%nat.
  eapply IHl; try eassumption.
@@ -222,12 +212,6 @@ Section Untyped.
      | None   => 0
      end
   end.
-
- Ltac crunch_eq_decs :=
-
-  repeat (match goal with
-   | [ |- context [ V_eq_dec ?X ?Y ] ] => destruct (V_eq_dec X Y)
-   end).
 
  Lemma NoSelfEdges i:
   E (i,i) = None.
@@ -433,15 +417,13 @@ Section Untyped.
    crunch_valid_edge;
    
    validate; simpl;
-   repeat (match goal with
-   | [ |- context [ V_eq_dec ?X ?Y ] ] => destruct (V_eq_dec X Y)
-   end); simpl;
+   crunch_eq_decs; simpl;
    
    try solve [subst; contradiction];
    try solve [destruct H0; subst; auto];
    try solve [destruct H1; subst; auto];
    try omega.
-Qed.
+ Qed.
 
  Lemma update_Sc_Valid a i j v ps:
   Valid (constrs (map ConstraintOfPair ps)) a ->
@@ -461,7 +443,7 @@ Qed.
    apply update_Sc_Valid1; auto.
 
   apply IHps; auto.
-Qed.
+ Qed.
 
  Lemma update_Sc_Obj_not_in a i j v ps:
    ~ In (i,j) ps ->
@@ -479,11 +461,7 @@ Qed.
   rewrite IHps; auto.
   simpl.
   destruct a0.
-
-  repeat (match goal with
-   | [ |- context [ V_eq_dec ?X ?Y ] ] => destruct (V_eq_dec X Y)
-   end); simpl; subst;
-
+  crunch_eq_decs; simpl; subst;
    try solve [destruct n; auto];
    try solve [destruct H; left; auto];
    try solve [destruct H0; left; auto];
@@ -512,10 +490,7 @@ Qed.
    repeat rewrite value_app_plus in *.
    rewrite H0.
    simpl.
-   destruct (V_eq_dec i i); try destruct n; auto.
-   destruct (V_eq_dec j j); try destruct n; auto.
-   simpl.
-   omega.
+   crunch_eq_decs; bye_not_eq; simpl; omega.
 
  unfold Objectives in *.
  unfold obj in *.
@@ -524,12 +499,8 @@ Qed.
  rewrite IHHUn; auto.
  simpl.
  destruct x as [k l].
-
-
-  repeat (match goal with
-   | [ |- context [ V_eq_dec ?X ?Y ] ] => destruct (V_eq_dec X Y)
-   end); simpl; substs;
-
+ 
+ crunch_eq_decs; simpl; substs;
    try solve [destruct n; auto];
    try solve [destruct H; auto];
    try solve [destruct H0; auto];
@@ -540,7 +511,7 @@ Qed.
  Lemma update_Sc_Obj a i j v:
    In (i,j) Pairs ->
    obj Objective (update_Sc a i j v) =
-    obj Objective a + v - a (SameCluster (i,j)).
+   obj Objective a + v - a (SameCluster (i,j)).
  Proof.
   unfold Objective.
   intros.
@@ -551,13 +522,6 @@ Qed.
   apply unique_In__not_swap_In; auto.
  Qed.
 
-
- Ltac bye_not_eq :=
-  substs;
-  match goal with
-   H : ?x <> ?x |- _
-   => destruct H; reflexivity
-  end.
 
  Lemma V_Pi_Min__Sc (a : Assignment Var) i j:
    In (i,j) Pairs ->
@@ -603,7 +567,7 @@ Qed.
        remember (E (i,j)) as Edge.
        destruct Edge; try destruct e; simpl;
            validate; simpl; crunch_eq_decs; simpl;
-           try solve [bye_not_eq];
+           bye_not_eq;
            try assert (a0 (Pi i) < a0 (Pi j)) by
               (destruct HVal as [HVA HVB];
                unfold ConstraintOfPair in HVA;
