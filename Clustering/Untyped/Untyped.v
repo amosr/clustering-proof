@@ -130,6 +130,14 @@ Section Untyped.
    apply selfcross__In; try assumption; apply All_Vs.
   Qed.
 
+  Lemma In_Pairs__ne: forall i j,
+      In (i,j) Pairs ->
+      i <> j.
+  Proof.
+   unfold Pairs. intros.
+   eapply unique_In__not_eq; eauto.
+  Qed.
+
 
   Lemma Pairs_Unique:
    Unique Pairs.
@@ -307,8 +315,14 @@ Section Untyped.
      try (crunch_valid_edge; omega).
  Qed.
 
+ Lemma V__Sc_refl (a : Assignment Var) i :
+   Valid Constraints a ->
+   a (SameCluster (i,i)) = 0.
+ Proof.
+  (* TODO this probably isn't true, but constraints *should* be modified to make it so *)
+ Admitted.
 
- Lemma V__Sc_refl (a : Assignment Var) i j :
+ Lemma V__Sc_sym (a : Assignment Var) i j :
    i <> j ->
    Valid Constraints a ->
    a (SameCluster (i,j)) = a (SameCluster (j,i)).
@@ -510,7 +524,7 @@ Qed.
   assert (a0 (SameCluster (i,j)) = 0 \/ a0 (SameCluster (i,j)) = 1) as HSc01.
    eapply V__Sc_Bool; assumption.
   assert (a0 (SameCluster (i,j)) = a0 (SameCluster (j,i))) as HScRefl.
-   eapply V__Sc_refl; assumption.
+   eapply V__Sc_sym; assumption.
 
   clear All_Vs v.
   assert (Unique Pairs) as HUnique. apply unique_selfcross. assumption.
@@ -584,33 +598,78 @@ Qed.
  omega.
 Qed.
   
-(*
- Lemma V__Sc_trans (a : Assignment Var) Vs i j k:
-   Valid (Constraints Vs) a ->
-   In (i,k) (Pairs Vs)      ->
-   a (SameCluster (i,j)) = 0 /\ a (SameCluster (j,k)) = 0 ->
+ Lemma V__Sc_trans (a : Assignment Var) i j k:
+   Valid Constraints a         ->
+   In (i,k) Pairs              ->
+   In (i,j) Pairs              ->
+   In (j,k) Pairs              ->
+   a = assignmentOfMinimal Min ->
+   a (SameCluster (i,j)) = 0   ->
+   a (SameCluster (j,k)) = 0   ->
    a (SameCluster (i,k)) = 0.
  Proof.
-  intros HVal HInIK HSame.
-   unfold Constraints in *.
+  intros.
+  assert (a (Pi i) = a (Pi j)) by apply~ V_Sc__Pi.
+  assert (a (Pi j) = a (Pi k)) by apply~ V_Sc__Pi.
+  assert (a (Pi i) = a (Pi k)) by congruence.
+  assert (i <> k) by apply~ In_Pairs__ne.
+  
+  apply~ V_Pi_Min__Sc.
+ Qed.
 
-  assert (a (SameCluster (i,k)) = 0 \/a (SameCluster (i,k)) = 1) as HBool.
-   eapply V__Sc_Bool; eassumption.
 
-   induction (Pairs Vs).
-    inversion HInIK.
-   simpl in *.
+ Lemma V__Sc_trans2 (a : Assignment Var) i j k:
+   Valid Constraints a         ->
+   a = assignmentOfMinimal Min ->
+   a (SameCluster (i,j)) = 0   ->
+   a (SameCluster (j,k)) = 0   ->
+   a (SameCluster (i,k)) = 0.
+ Proof.
+  intros.
+  destruct (V_eq_dec i j); destruct (V_eq_dec j k);
+                           destruct (V_eq_dec i k);
+                           try solve [subst; auto].
 
-   apply Valid_app_and in HVal.
-   destruct HVal  as [HVij HVrest].
-   destruct HSame as [HSameIJ HSameJK].
+  asserts_rewrite~ (i = k).
+  apply~ V__Sc_refl.
+  
+  assert (a (SameCluster (i,j)) = a (SameCluster (j,i))) as Rij by apply~ V__Sc_sym.
+  assert (a (SameCluster (j,k)) = a (SameCluster (k,j))) as Rjk by apply~ V__Sc_sym.
+  assert (a (SameCluster (i,k)) = a (SameCluster (k,i))) as Rik by apply~ V__Sc_sym.
 
-   destruct HInIK.
-   subst.
-   unfold ConstraintOfPair in HVij.
-      destruct (E (i,k)) as [e|]; try destruct e;
-       crunch_valid HVij.
-   destruct HBool.
-    assumption.
-   *)
+  assert (In (i,j) Pairs \/ In (j,i) Pairs) as Iij by apply~ All_Pairs.
+  assert (In (j,k) Pairs \/ In (k,j) Pairs) as Ijk by apply~ All_Pairs.
+  assert (In (i,k) Pairs \/ In (k,i) Pairs) as Iik by apply~ All_Pairs.
+
+  Ltac pi_same a i j :=
+   assert (a (Pi i) = a (Pi j)) by (
+        try solve [apply~ V_Sc__Pi];
+        try solve [symmetry; apply~ V_Sc__Pi; congruence]
+      ).
+
+  destruct Iij;
+  destruct Ijk;
+  destruct Iik;
+  pi_same a i j;
+  pi_same a j k;
+  assert (a (Pi i) = a (Pi k)) by congruence;
+
+
+  assert (i <> k) by (
+    try solve [apply~ In_Pairs__ne];
+    try solve [
+        assert (k <> i) by apply~ In_Pairs__ne;
+        auto
+    ]
+  );
+  try solve [
+    apply~ V_Pi_Min__Sc
+  ];
+  try solve [
+    rewrite Rik;
+    apply~ V_Pi_Min__Sc
+  ].
+ Qed.
+
+
 End Untyped.
