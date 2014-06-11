@@ -171,6 +171,11 @@ Section Untyped.
                    end in
      let ScReq  := var1 Sc |==| var1 ScR in
      let Bounds := const _ 0 |<=| var1 Sc |<=| const _ 1 in
+     let Selfs  := match vv with
+                   | (i,j) => constrs
+                     [ var1 (SameCluster (i,i)) |==| const _ 0
+                     ; var1 (SameCluster (j,j)) |==| const _ 0 ]
+                   end in
      match (vv, E vv) with
        (* No edge *)
          | ((i,j), None)
@@ -178,20 +183,23 @@ Section Untyped.
            => constrs
             [ var (-N) Sc |<=| var1 (Pi j) |-| var1 (Pi i) |<=| var N Sc
             ; Bounds
-            ; ScReq ]
+            ; ScReq
+            ; Selfs ]
        (* A fusible edge *)
          | ((i,j), Some Fusible)
            => constrs
             [ var1     Sc |<=| var1 (Pi j) |-| var1 (Pi i) |<=| var N Sc
             ; Bounds
-            ; ScReq ]
+            ; ScReq
+            ; Selfs ]
        (* A non-fusible edge *)
          | ((i,j), Some Nonfusible)
            (* SameCluster i j = 0, and Pi i < Pi j *)
            => constrs
             [ var1 (Pi i) |<| var1 (Pi j)
             ; var1 Sc |==| const _ 1
-            ; ScReq ]
+            ; ScReq
+            ; Selfs]
          end.
 
 
@@ -203,8 +211,10 @@ Section Untyped.
  Definition Sat := fun x =>
   match x with
   (* a pair of nodes not in same cluster *)
-  | SameCluster p
-  => 1
+  | SameCluster (i,j)
+  => if   V_eq_dec i j
+     then 0
+     else 1
   (* pi is index in topological sort *)
   | Pi i
   => match index_of V_eq_dec i Vs with
@@ -212,6 +222,27 @@ Section Untyped.
      | None   => 0
      end
   end.
+
+ Ltac crunch_eq_decs :=
+
+  repeat (match goal with
+   | [ |- context [ V_eq_dec ?X ?Y ] ] => destruct (V_eq_dec X Y)
+   end).
+
+ Lemma NoSelfEdges i:
+  E (i,i) = None.
+ Proof.
+  assert (In i Vs) as InI by auto.
+  clear All_Vs.
+  induction Vs. inverts InI.
+  inverts VsTS.
+  inverts Vs_Unique.
+  destruct InI.
+  subst.
+  eapply Forall_forall in H1; simpl; eauto.
+  apply~ IHl.
+ Qed.
+  
 
  Lemma Sat_Valid: Valid Constraints Sat.
  Proof.
@@ -248,31 +279,29 @@ Section Untyped.
   omega.
 
   destruct Edge as [e|]; try destruct e;
-    validate; Z_simp_all; try omega;
+    validate;
+     Z_simp_all; try omega;
+     crunch_eq_decs;
+     try solve [subst; rewrite NoSelfEdges in HeqEdge; inverts HeqEdge];
+     try solve [destruct~ n];
+     Z_simp_all; try omega;
     try rewrite Hixi;
     try rewrite Hixj;
   try assert (ixi < ixj)%nat by (eapply Edge__TS_index_gt; eauto);
+  try unfold N in *;
+  try destruct (Z.of_nat (length Vs));
+  try assert (ixi = ixj) by congruence;
+  simpl;
   try omega.
 
- unfold N in *.
- destruct (Z.of_nat (length Vs)); omega.
-
- unfold N in *.
- destruct (Z.of_nat (length Vs)).
- omega.
- simpl.
  assert (Z.neg p = - Z.pos p).
   simpl. reflexivity.
- rewrite H5. omega.
+ simpl. rewrite H5. omega.
 
  assert (Z.neg p = - Z.pos p).
   auto.
  simpl.
  rewrite H5 in *.
- omega.
-
- unfold N in *.
- destruct (Z.of_nat (length Vs));
  omega.
  Qed.
 
@@ -315,12 +344,28 @@ Section Untyped.
      try (crunch_valid_edge; omega).
  Qed.
 
- Lemma V__Sc_refl (a : Assignment Var) i :
+ Lemma V__Sc_refl (a : Assignment Var) i j :
+   (* this is a surprising requirement *)
+   (* it turns out that if |Vs| == 1, then there *are* no constraints, *)
+   (* so Sc(i,i) may in fact not be 0 *)
+   i <> j              ->
    Valid Constraints a ->
    a (SameCluster (i,i)) = 0.
  Proof.
-  (* TODO this probably isn't true, but constraints *should* be modified to make it so *)
- Admitted.
+  intros.
+  unfold Constraints in *.
+  
+  assert (In (i,j) Pairs \/ In (j,i) Pairs) as InIJ by apply~ All_Pairs.
+  induction Pairs.
+   destruct InIJ as [II|II]; inverts II.
+  
+  simpl in *.
+  apply Valid_app_and in H0.
+  destruct H0.
+  destruct InIJ as [II|II]; destruct II; subst;
+   try solve [crunch_valid_edge; omega];
+   try solve [apply~ IHl].
+ Qed.
 
  Lemma V__Sc_sym (a : Assignment Var) i j :
    i <> j ->
@@ -507,6 +552,13 @@ Qed.
  Qed.
 
 
+ Ltac bye_not_eq :=
+  substs;
+  match goal with
+   H : ?x <> ?x |- _
+   => destruct H; reflexivity
+  end.
+
  Lemma V_Pi_Min__Sc (a : Assignment Var) i j:
    In (i,j) Pairs ->
    i <> j ->
@@ -525,6 +577,10 @@ Qed.
    eapply V__Sc_Bool; assumption.
   assert (a0 (SameCluster (i,j)) = a0 (SameCluster (j,i))) as HScRefl.
    eapply V__Sc_sym; assumption.
+  assert (a0 (SameCluster (i,i)) = 0) as HScII0.
+   eapply V__Sc_refl; eassumption.
+  assert (a0 (SameCluster (j,j)) = 0) as HScJJ0.
+   eapply V__Sc_refl; eauto.
 
   clear All_Vs v.
   assert (Unique Pairs) as HUnique. apply unique_selfcross. assumption.
@@ -546,30 +602,18 @@ Qed.
        unfold ConstraintOfPair.
        remember (E (i,j)) as Edge.
        destruct Edge; try destruct e; simpl;
-       try (
-      validate; simpl;
-       simpl;
-       try destruct (Sumbool.sumbool_and _ _ _ _ (V_eq_dec i i) (V_eq_dec j j)) as [Hi | Hi];
-       try destruct (Sumbool.sumbool_and _ _ _ _ (V_eq_dec j j) (V_eq_dec i i)) as [Hj | Hj];
-       try destruct (Sumbool.sumbool_and _ _ _ _ _ _) as [Hk | Hk];
-       try destruct Hi as [Hi1 Hi2];
-       try destruct Hi as [Hi | Hi];
-       try (destruct Hi; reflexivity);
-       try (destruct Hj; destruct H; reflexivity);
-       omega).
-      
-      assert (a0 (Pi i) < a0 (Pi j)).
-       destruct HVal.
-       unfold ConstraintOfPair in H.
-       simpl in H.
-       rewrite <- HeqEdge in H.
-       crunch_valid H.
-       omega.
-      omega.
-   
-   inverts HUnique.
-   destruct HVal.
-   apply update_Sc_Valid; auto.
+           validate; simpl; crunch_eq_decs; simpl;
+           try solve [bye_not_eq];
+           try assert (a0 (Pi i) < a0 (Pi j)) by
+              (destruct HVal as [HVA HVB];
+               unfold ConstraintOfPair in HVA;
+               rewrite <- HeqEdge in HVA;
+               crunch_valid HVA;
+               omega);
+            omega.
+     inverts HUnique.
+     destruct HVal.
+     apply update_Sc_Valid; auto.
    
    destruct HVal as [HVal1 HVal2].
    split.
@@ -584,10 +628,8 @@ Qed.
 
  assert (b (SameCluster (i,j)) = 0).
   rewrite Heqb. simpl.
-   destruct (V_eq_dec i i); auto.
-   destruct (V_eq_dec j j); auto.
-   destruct n; auto.
-   destruct n; auto.
+   crunch_eq_decs; simpl; auto;
+     try solve [bye_not_eq].
  rewrite <- H.
 
  assert (obj Objective a0 <= obj Objective b) by auto.
@@ -631,7 +673,7 @@ Qed.
                            try solve [subst; auto].
 
   asserts_rewrite~ (i = k).
-  apply~ V__Sc_refl.
+  apply~ V__Sc_refl. eauto.
   
   assert (a (SameCluster (i,j)) = a (SameCluster (j,i))) as Rij by apply~ V__Sc_sym.
   assert (a (SameCluster (j,k)) = a (SameCluster (k,j))) as Rjk by apply~ V__Sc_sym.
