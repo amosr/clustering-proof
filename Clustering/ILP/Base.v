@@ -68,4 +68,7 @@ Definition assignmentOfMinimal (m : Minimal) : Assignment :=
   | MinimalC a _ _  => a
  end.
 
+(* Actually, this ignores the fact that the minimal might be unbounded.
+   I will need to think about this case some more.
+   I don't think it's much of an issue. *)
 End ILP.

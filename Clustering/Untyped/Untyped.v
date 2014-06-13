@@ -13,15 +13,23 @@ Import ListNotations.
 Set Implicit Arguments.
 
 Section Untyped.
+ (* The first step is to define the graph that we are working on.
+    This is a simple graph, with fusible and fusion-preventing edges.
+    There is only a single node type -- that is, all nodes may
+    be fused together if edges permit.
+    This is equivalent to the loops all having the same loop bounds.
+ *)
 
  (* Type of nodes *)
  Variable V : Type.
 
- (* Equality must be decidable *)
+ (* Need to be able to test if two nodes are equal *)
  Hypothesis V_eq_dec
   : forall (a b : V),
     {a = b} + {a <> b}.
 
+ (* This is a helper tactic to find all node equality tests in the goal,
+    and perform case analysis over them. All of them. *)
  Ltac crunch_eq_decs := crunch_destruct V_eq_dec.
 
 
@@ -33,9 +41,13 @@ Section Untyped.
  (* Is there an edge between two? If so, what kind *)
  Variable E : (V * V) -> option EdgeType.
 
- (* There must exist a topological ordering *)
+ (* We need a list of all the nodes *)
  Variable Vs : list V.
 
+ (* A topological ordering of nodes:
+    if P is before Q, there are no edges from Q to P
+    (but there may be edges from P to Q)
+ *)
  Inductive TopSort : list V -> Prop
    := TS_Nil  : TopSort nil
     | TS_Cons : forall x xs,
@@ -43,10 +55,20 @@ Section Untyped.
                 TopSort xs ->
                 TopSort (x::xs).
 
+ (* Our list must be a topological ordering *)
  Hypothesis VsTS : TopSort Vs.
+ (* The list must also be complete - all nodes are mentioned *)
  Hypothesis All_Vs: forall v, In v Vs.
+ (* Nodes cannot be mentioned twice *)
  Hypothesis Vs_Unique : Unique Vs.
 
+ (* Because of the topological sort, we know that if there is
+    an edge between two nodes P and Q, Q must be strictly after P.
+    I think this proof could be cleaned up a lot.
+    
+    The index_of preconditions are also unnecessary, but require:
+    Lemma All_Vs_Index i :
+      exists ixi, index_of V_eq_dec i Vs = Some ixi *)      
  Lemma Edge__TS_index_gt i j et ixI ixJ:
        E (i,j) = Some et ->
        index_of V_eq_dec i Vs = Some ixI ->
@@ -101,17 +123,50 @@ Section Untyped.
  omega.
  Qed.
 
-  (* We now have a graph that we can cluster. *)
+ Lemma NoSelfEdges i:
+  E (i,i) = None.
+ Proof.
+  assert (In i Vs) as InI by auto.
+  clear All_Vs.
+  induction Vs. inverts InI.
+  inverts VsTS.
+  inverts Vs_Unique.
+  destruct InI.
+  subst.
+  eapply Forall_forall in H1; simpl; eauto.
+  apply~ IHl.
+ Qed.
+  
 
+  (* With Vs and E defined, we now have a graph that we can cluster.
+     We define the ILP variables, the constraints, and the
+     objective function.
+  *)
 
-  (* The type of ILP variables *)
+  (* The type of ILP variables.
+      SameCluster(i,j) = 0 iff i and j are clustered together
+      Pi(i) is used to encode precedence and acyclic constraints:
+       if there is a non-fusible edge between i and j, then
+        Pi(i) < Pi(j).
+       if SameCluster(i,j) = 0, then Pi(i) = Pi(j)
+
+     Actually, Pi needn't be integral, which makes the
+     ILP solver's job easier.
+  *)
   Inductive Var : Type
    := SameCluster : (V * V) -> Var
     | Pi          :      V  -> Var.
 
+  (* Cross product of nodes, irreflexive and asymmetric.
+     This is a slight simplification that lets us use around
+     N*(N/2) SameCluster variables, instead of N*N.
+  *)
   Definition Pairs : list (V * V)
    := selfcross Vs.
 
+  (* Since every i,j are in Vs, (i,j) must be in cross product of Vs.
+     However, since it is asymmetric, one of (i,j) or (j,i) will be in.
+  *)
   Lemma All_Pairs: forall i j,
       i <> j ->
       In (i,j) Pairs \/ In (j,i) Pairs.
@@ -120,6 +175,8 @@ Section Untyped.
    apply selfcross__In; try assumption; apply All_Vs.
   Qed.
 
+  (* And since it is irreflexive, any two nodes in Pairs are not equal
+  *)
   Lemma In_Pairs__ne: forall i j,
       In (i,j) Pairs ->
       i <> j.
@@ -137,13 +194,21 @@ Section Untyped.
 
 
 
- (* N is the number of nodes *)
-
+ (* N is the number of nodes.
+    This is used as a number big enough to be effectively unconstrained.
+    For example, the constraint
+      -N < Pi(i) < N
+    gives more than enough room for all Pi(i) (there are only N)
+    to not be the same.
+ *)
   Definition N : Z
    := Z_of_nat (length Vs).
 
 
- (* The objective function is simply to minimise all clusters with equal weight *)
+ (* The objective function is simply to minimise all clusters with
+    equal weight *)
+ (* Maybe extract definition of clusters so it's easier to talk about
+    objectives of specific pairs *)
  Definition Objectives (ps : list (V * V)) : Linear Var
   := let clusters
           := map (fun p => var1 (SameCluster p)) ps
@@ -153,23 +218,30 @@ Section Untyped.
   := Objectives Pairs.
 
 
- (* Define constraint for pair of nodes *)
+ (* Define constraint for a pair of nodes *)
+ (* TODO: extract the selfs here into separate definition, see below *)
  Definition ConstraintOfPair (vv : V * V) : list (C Var)
   := let Sc     := SameCluster vv in
      let ScR    := match vv with
                    | (i,j) => SameCluster (j,i)
                    end in
+     (* SameCluster is symmetric *)
      let ScReq  := var1 Sc |==| var1 ScR in
+     (* SameCluster is boolean - 0 or 1 *)
      let Bounds := const _ 0 |<=| var1 Sc |<=| const _ 1 in
+     (* This shouldn't exactly be here, but:
+        clustering is reflexive. SameCluster(i,i) is always 0. *)
      let Selfs  := match vv with
                    | (i,j) => constrs
                      [ var1 (SameCluster (i,i)) |==| const _ 0
                      ; var1 (SameCluster (j,j)) |==| const _ 0 ]
                    end in
+     (* Look up whether there is an edge between these two nodes *)
      match (vv, E vv) with
        (* No edge *)
          | ((i,j), None)
-           (* If SameCluster i j, then Pi i = Pi j *)
+           (* If SameCluster i j, then Pi i = Pi j
+              Otherwise Pis are unconstrained *)
            => constrs
             [ var (-N) Sc |<=| var1 (Pi j) |-| var1 (Pi i) |<=| var N Sc
             ; Bounds
@@ -177,6 +249,8 @@ Section Untyped.
             ; Selfs ]
        (* A fusible edge *)
          | ((i,j), Some Fusible)
+           (* If SameCluster i j, then Pi i = Pi j
+              Otherwise Pi i < Pi j *)
            => constrs
             [ var1     Sc |<=| var1 (Pi j) |-| var1 (Pi i) |<=| var N Sc
             ; Bounds
@@ -184,7 +258,7 @@ Section Untyped.
             ; Selfs ]
        (* A non-fusible edge *)
          | ((i,j), Some Nonfusible)
-           (* SameCluster i j = 0, and Pi i < Pi j *)
+           (* SameCluster i j = 1, and Pi i < Pi j *)
            => constrs
             [ var1 (Pi i) |<| var1 (Pi j)
             ; var1 Sc |==| const _ 1
@@ -192,12 +266,23 @@ Section Untyped.
             ; Selfs]
          end.
 
+ (* Cont'd TODO: extract the selfs out of ConstraintOfPair, so we have
 
+    constrs (map ConstraintOfPair Pairs) ++
+    constrs (map SelfConstraint   Vs)
+   where SelfConstraint i = SameCluster(i,i) |==| 0
+   
+    The current definition has superfluous selfs, *and* only has selfs
+    if there's more than one node in Vs.
+    This wouldn't be much of a problem in practice, but it makes the
+    proofs messier (see V__Sc_refl)
+   *)
  Definition Constraints : list (C Var)
   := constrs (map ConstraintOfPair Pairs).
 
- (* There exists at least one valid clustering *)
- (* (and it's no fusion at all) *)
+ (* The minimality axiom requires that there exists at least
+    one valid assignment. For simplicity, we just create the
+    assignment for the clustering with no fusion at all. *)
  Definition Sat := fun x =>
   match x with
   (* a pair of nodes not in same cluster *)
@@ -213,21 +298,7 @@ Section Untyped.
      end
   end.
 
- Lemma NoSelfEdges i:
-  E (i,i) = None.
- Proof.
-  assert (In i Vs) as InI by auto.
-  clear All_Vs.
-  induction Vs. inverts InI.
-  inverts VsTS.
-  inverts Vs_Unique.
-  destruct InI.
-  subst.
-  eapply Forall_forall in H1; simpl; eauto.
-  apply~ IHl.
- Qed.
-  
-
+ (* Prove that the assignment is valid. *)
  Lemma Sat_Valid: Valid Constraints Sat.
  Proof.
   unfold Constraints.
@@ -289,9 +360,15 @@ Section Untyped.
  omega.
  Qed.
 
+ (* Now we know that there's at least one assignment that
+    minimises Objective *)
  Definition Min := MinimalExists Objective Sat_Valid.
 
 
+ (* Find any "Valid (ConstraintOfPair ij)" in hypotheses.
+    Perform case analysis on different types of edges,
+    and crunch each list of constraints into actual
+    value constraints usable by omega *)
  Ltac crunch_valid_edge :=
   match goal with
    | [ H : Valid (ConstraintOfPair ?a) _ |- _]
