@@ -1,4 +1,6 @@
 Require Import Clustering.Tactics.LibTactics.
+Require Import Coq.Lists.List.
+Import ListNotations.
 Set Implicit Arguments.
 
 Ltac crunch_destruct V :=
@@ -15,4 +17,12 @@ Ltac bye_not_eq :=
    match goal with
     H : ?x <> ?x |- _
     => destruct H; reflexivity
+   end].
+
+Ltac bye_in_empty :=
+ try solve
+ [ substs;
+   match goal with
+    H : In ?x [] |- _
+    => inverts H
    end].

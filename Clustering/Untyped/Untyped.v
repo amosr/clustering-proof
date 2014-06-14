@@ -66,7 +66,6 @@ Section Untyped.
     an edge between two nodes P and Q, Q must be strictly after P.
     I think this proof could be cleaned up a lot.
     
-    The index_of preconditions are also unnecessary, but require:
     Lemma All_Vs_Index i :
       exists ixi, index_of V_eq_dec i Vs = Some ixi *)      
  Lemma Edge__TS_index_gt i j et ixI ixJ:
@@ -76,51 +75,39 @@ Section Untyped.
        (ixI < ixJ)%nat.
  Proof.
   intros HE Hi Hj.
-   assert (In i Vs) by auto.
-   assert (In j Vs) by auto.
+   assert (In i Vs) as InI by auto.
+   assert (In j Vs) as InJ by auto.
   clear All_Vs Vs_Unique.
-  gen ixI ixJ.
-  induction Vs; intros. inverts Hi. inverts VsTS. simpl in *.
-  destruct (V_eq_dec i a). subst. inverts Hi. destruct (V_eq_dec j a).
-   assert (Some et = None).
-    inverts H3. subst. rewrite <- H5. rewrite <- HE. auto.
-   inverts H1.
-   inverts H0. destruct~ n.
-    apply (In__index_of V_eq_dec) in H1.
-    destruct H1.
-    rewrite H0 in Hj.
-    inverts Hj. omega.
+  gen ixI ixJ; induction Vs; intros; bye_in_empty.
+  inverts VsTS.
+  inverts H1.
+  simpl in *.
+  destruct (V_eq_dec i a); destruct (V_eq_dec j a);
+  destruct InI; destruct InJ; bye_not_eq;
+  try solve [
+      rewrite HE in H3; inverts H3
+  ];
+  try solve [
+      assert (E (i,j) = None) as HEijN by
+          (substs; rewrite~ Forall_forall in H4);
+      rewrite HEijN in HE; inverts HE
+  ];
+  try solve [
+      destruct (index_of V_eq_dec j l);
+      inverts Hi; inverts Hj; omega
+  ].
 
- destruct  H; destruct  H0; subst.
- destruct~ n. destruct~ n.
+  assert (In i l) as InI by auto.
+  assert (In j l) as InJ by auto.
 
- assert (E (i,j) = None) as HENone.
- inverts H3.
- eapply Forall_forall in H5; eassumption.
+  apply (In__index_of V_eq_dec) in H; destruct H.
+  apply (In__index_of V_eq_dec) in H0; destruct H0.
+  
+  rewrite H in *. rewrite H0 in *.
+  inverts Hi. inverts Hj.
 
- rewrite HENone in HE. inverts HE.
-
- remember H  as HInI.
- remember H0 as HInJ.
- clear HeqHInI. clear HeqHInJ.
- apply (In__index_of V_eq_dec) in H.  destruct H.
- apply (In__index_of V_eq_dec) in H0. destruct H0.
-
- rewrite H  in Hi. rewrite H0 in Hj.
- destruct (V_eq_dec j a). subst.
- assert (E (i,a) = None) as HENone.
-  inverts H3.
-  eapply Forall_forall in H6;
-  eassumption.
- rewrite HENone in HE.
- inverts HE.
-
- inverts Hi.
- inverts Hj.
-
- assert (x < x0)%nat.
- eapply IHl; try eassumption.
- omega.
+  assert (x < x0)%nat by apply~ IHl.
+  omega.
  Qed.
 
  Lemma NoSelfEdges i:
@@ -471,6 +458,11 @@ Section Untyped.
   crunch_valid_edge; rewrite HSame in *; omega.
  Qed.
 
+
+ (* Given an assignment, update i and j's SameCluster to be a new value.
+    All other variables stay the same.
+    This is necessary for the minimality proofs.
+ *)
  Definition update_Sc (a_orig : Assignment Var) i j new_value : Assignment Var :=
   (fun x =>
    match x with
@@ -482,6 +474,9 @@ Section Untyped.
       else a_orig x
    | _ => a_orig x end).
 
+ (* If the original assignment is valid for some pair, and the pair
+    is not the one being updated, then the updated value is the same,
+    so still valid. *)
  Lemma update_Sc_Valid1 a i j v p:
   Valid (ConstraintOfPair p) a ->
   (i,j) <> p -> (j,i) <> p ->
@@ -502,6 +497,8 @@ Section Untyped.
    try omega.
  Qed.
 
+ (* Similarly, if the updated pair is not in the list at all,
+    then updated is valid *)
  Lemma update_Sc_Valid a i j v ps:
   Valid (constrs (map ConstraintOfPair ps)) a ->
   ~ In (i,j) ps -> ~ In (j,i) ps ->
@@ -522,6 +519,8 @@ Section Untyped.
   apply IHps; auto.
  Qed.
 
+ (* Objective function does not change if variable to update
+    is not in list *)
  Lemma update_Sc_Obj_not_in a i j v ps:
    ~ In (i,j) ps ->
    ~ In (j,i) ps ->
@@ -545,6 +544,9 @@ Section Untyped.
    omega.
  Qed.
 
+ (* Objective function is original, except
+    remove original value for ij, and add new value.
+    This is only true if ij only occurs once - ie ps is unique *)
  Lemma update_Sc_Obj' a i j v ps:
    Unique ps     ->
      In (i,j) ps ->
@@ -599,7 +601,9 @@ Section Untyped.
   apply unique_In__not_swap_In; auto.
  Qed.
 
-
+ (* If the pis are the same, there are no constraints stopping 
+    SameCluster ij from being 0. That means that if it's the
+    minimal assignment, SameCluster ij *must* be 0. *)
  Lemma V_Pi_Min__Sc (a : Assignment Var) i j:
    In (i,j) Pairs ->
    i <> j ->
@@ -681,6 +685,10 @@ Section Untyped.
  omega.
 Qed.
   
+ (* Transitivity of fusion.
+    This is only necessarily true for minimal assignments.
+    The "In" preconditions are not necessary, but make the proof
+    much simpler. *)
  Lemma V__Sc_trans (a : Assignment Var) i j k:
    Valid Constraints a         ->
    In (i,k) Pairs              ->
@@ -701,6 +709,7 @@ Qed.
  Qed.
 
 
+ (* The more general, more complicated proof of transitivity *)
  Lemma V__Sc_trans2 (a : Assignment Var) i j k:
    Valid Constraints a         ->
    a = assignmentOfMinimal Min ->
