@@ -31,7 +31,7 @@ Fixpoint cross {V} (xs ys : list V) : list (V * V)
 
 
 Lemma In_or_not: forall A (a : A) xs
-     (Heqdec : forall (a b : A), a = b \/ a <> b),
+     (Heqdec : forall (a b : A), {a = b} + {a <> b}),
       In a xs \/ ~ In a xs.
 Proof.
  intros.
@@ -41,48 +41,24 @@ Proof.
    - destruct IHxs.
       left. apply in_cons. assumption.
       right. unfold not. intros.
-             inversion H1; eauto.
+             inversion H0; eauto.
 Qed.
 
-Fixpoint Contains {A} (f : A -> bool) (xs : list A) :=
- match xs with
- | [] => false
- | x::xs' => match f x with
-             | true => true
-             | false => Contains f xs'
-             end
- end.
 
-
-Lemma Contains_is_in: forall A (a : A) xs
-     (Heqdec : forall (a b : A), a = b \/ a <> b)
-     (beq    : A -> A -> bool)
-     (Heqdec : forall (a b : A), beq a b = true <-> a = b),
-      Contains (beq a) xs = true <-> In a xs.
+Lemma In_or_not': forall A (a : A) xs
+     (Heqdec : forall (a b : A), {a = b} + {a <> b}),
+      {In a xs} + {~ In a xs}.
 Proof.
  intros.
-  induction xs.
-   simpl. split.
-   intros. inversion H.
-   eauto.
+ induction xs; eauto.
+  destruct (Heqdec a a0).
+   - left. constructor. auto.
+   - destruct IHxs.
+      left. apply in_cons. assumption.
+      right. unfold not. intros.
+             inversion H; eauto.
+Defined.
 
-  simpl.
-   remember (Heqdec a a0) as Eq.
-   destruct Eq; subst.
-    assert (beq a0 a0 = true). apply Heqdec0. eauto.
-   rewrite H. split; eauto.
-
-   remember (beq a a0) as B.
-   destruct B.
-   symmetry in HeqB.
-   apply Heqdec0 in HeqB.
-   contradiction.
-
-  destruct IHxs; split; eauto.
-   intros. destruct H1.
-   symmetry in H1. contradiction.
-   eauto.
-Qed.
 
 
 Lemma selfcross_go__In: forall {A} (xs : list A) i j,

@@ -26,3 +26,19 @@ Ltac bye_in_empty :=
     H : In ?x [] |- _
     => inverts H
    end].
+
+(*
+
+Ltac bye_punch_ne :=
+ try solve [
+ match goal with 
+  | H : ?a = ?c |- ?a <> ?b
+  => rewrite H; intros not; inversion not
+  | H : ?c = ?a |- ?a <> ?b
+  => rewrite H; intros not; inversion not
+  | H : ?b = ?c |- ?a <> ?b
+  => rewrite H; intros not; inversion not
+  | H : ?c = ?b |- ?a <> ?b
+  => rewrite H; intros not; inversion not
+ end].
+*)
